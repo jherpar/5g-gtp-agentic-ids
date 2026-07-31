@@ -7,8 +7,17 @@
 # Initial values are order-of-magnitude domain defaults; Phase 1/4 empirical
 # exploration on real sample-mode data should tune these.
 
+# flood_pattern.min_sustained_packets_per_s recalibrated from an initial
+# guess of 150.0 (linespeed-flood assumption) down to 0.9, based on real
+# ICMPflood_BS1 data: the actual victim-corroborated attack TEIDs (Level 2
+# fired) run at ~1.03 pkt/s sustained over ~612s -- a controlled-rate
+# tool, not a linespeed flood. At 150.0 pkt/s, zero ICMPflood instances
+# ever reached HIGH confidence (Level 3 never fired), confirmed via
+# scripts/validate_labeling.py. Only validated against ICMPflood so far;
+# UDPflood/SYNflood/Goldeneye share this config but haven't been
+# individually checked against real data yet.
 flood_pattern:
-  min_sustained_packets_per_s: 150.0
+  min_sustained_packets_per_s: 0.9
   min_window_s: 5.0
 
 scan_pattern:
