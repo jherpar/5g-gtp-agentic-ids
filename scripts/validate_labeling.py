@@ -36,12 +36,14 @@ from agente_5g.models.packet import GTPPacketRecord  # noqa: E402
 from agente_5g.models.schedule_config import AttackSchedule, LabelPatternsConfig  # noqa: E402
 from agente_5g.models.teid_features import TEIDFeatureRecord  # noqa: E402
 from agente_5g.parsers.scapy_parser import ScapyPacketParser  # noqa: E402
+from agente_5g.preprocessing.feature_cache import load_packets, save_packets  # noqa: E402
 from agente_5g.preprocessing.labeling import label_sessions, label_teid_features  # noqa: E402
 from agente_5g.preprocessing.session_builder import SessionBuilder  # noqa: E402
 from agente_5g.preprocessing.teid_extractor import TEIDFeatureExtractor  # noqa: E402
 
 REPORT_DIR = PROJECT_ROOT / "outputs" / "reports" / "labeling_validation"
 FIGURE_DIR = PROJECT_ROOT / "outputs" / "figures" / "labeling_validation"
+PACKET_CACHE_DIR = PROJECT_ROOT / "outputs" / "cache" / "packets"
 
 
 def _instance_packets_by_teid(packets: list[GTPPacketRecord]) -> dict[int, list[GTPPacketRecord]]:
@@ -93,26 +95,40 @@ def process_file(
     schedule: AttackSchedule,
     patterns: LabelPatternsConfig,
     max_duration_s: float | None = None,
+    session_window_s: int = 5,
 ) -> dict:
-    print(f"[{attack_type}_{base_station}] parsing {path.name} ...")
-    t0 = time.time()
-    parser = ScapyPacketParser()
-    packets = list(
-        parser.parse_file(
-            path,
-            base_station=base_station,  # type: ignore[arg-type]
-            source_attack_type=attack_type,
-            max_duration_s=max_duration_s,
-        )
+    cache_path = (
+        PACKET_CACHE_DIR / f"{attack_type}_{base_station}_{int(max_duration_s or 0)}.parquet"
     )
-    elapsed = time.time() - t0
-    span_s = packets[-1].timestamp - packets[0].timestamp if packets else 0.0
-    print(f"  {len(packets)} packets, {span_s:.1f}s span, parsed in {elapsed:.1f}s")
+    t0 = time.time()
+    if cache_path.exists():
+        packets = load_packets(cache_path)
+        elapsed = time.time() - t0
+        span_s = packets[-1].timestamp - packets[0].timestamp if packets else 0.0
+        print(
+            f"[{attack_type}_{base_station}] loaded {len(packets)} packets from cache "
+            f"({elapsed:.1f}s, {span_s:.1f}s span)"
+        )
+    else:
+        print(f"[{attack_type}_{base_station}] parsing {path.name} ...")
+        parser = ScapyPacketParser()
+        packets = list(
+            parser.parse_file(
+                path,
+                base_station=base_station,  # type: ignore[arg-type]
+                source_attack_type=attack_type,
+                max_duration_s=max_duration_s,
+            )
+        )
+        elapsed = time.time() - t0
+        span_s = packets[-1].timestamp - packets[0].timestamp if packets else 0.0
+        print(f"  {len(packets)} packets, {span_s:.1f}s span, parsed in {elapsed:.1f}s")
+        save_packets(packets, cache_path)
 
     features = list(TEIDFeatureExtractor().extract(packets))
     labeled_features = list(label_teid_features(features, packets, schedule, patterns))
 
-    sessions = list(SessionBuilder(window_size_s=5).build(packets))
+    sessions = list(SessionBuilder(window_size_s=session_window_s).build(packets))  # type: ignore[arg-type]
     labeled_sessions = list(
         label_sessions(
             sessions,
@@ -137,6 +153,7 @@ def process_file(
         "n_packets": len(packets),
         "span_s": span_s,
         "file_first_ts": packets[0].timestamp if packets else 0.0,
+        "packets": packets,
         "features": labeled_features,
         "sessions": labeled_sessions,
         "victim_counts_all": victim_counts_all,

@@ -11,14 +11,21 @@
 # guess of 150.0 (linespeed-flood assumption) down to 0.9, based on real
 # ICMPflood_BS1 data: the actual victim-corroborated attack TEIDs (Level 2
 # fired) run at ~1.03 pkt/s sustained over ~612s -- a controlled-rate
-# tool, not a linespeed flood. At 150.0 pkt/s, zero ICMPflood instances
-# ever reached HIGH confidence (Level 3 never fired), confirmed via
-# scripts/validate_labeling.py. Only validated against ICMPflood so far;
-# UDPflood/SYNflood/Goldeneye share this config but haven't been
-# individually checked against real data yet.
+# tool, not a linespeed flood.
+#
+# PLACEHOLDER, pending scripts/calibrate_flood_pattern.py results:
+# max_packet_size_entropy/max_unique_dst_ports were added because the rate
+# floor alone turned out to match nearly any sustained conversation (see
+# outputs/reports/confidence_diagnosis/report.md -- 40-65% of attack-labeled
+# TEIDs "matched pattern" without ever touching the victim IP, with rates up
+# to ~13,000 pkt/s in the non-corroborated group). These starting values are
+# order-of-magnitude guesses, not yet calibrated against real corroborated-
+# vs-not distributions; update once the calibration script finishes.
 flood_pattern:
   min_sustained_packets_per_s: 0.9
   min_window_s: 5.0
+  max_packet_size_entropy: 2.0
+  max_unique_dst_ports: 5
 
 scan_pattern:
   min_unique_dst_ports_per_source: 15

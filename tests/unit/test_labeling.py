@@ -16,6 +16,7 @@ from agente_5g.models.schedule_config import (
 from agente_5g.preprocessing.labeling import (
     _approximate_attack_subwindow,
     _classify,
+    _level3_pattern_matches,
     label_sessions,
     label_teid_features,
 )
@@ -55,7 +56,12 @@ def schedule() -> AttackSchedule:
 @pytest.fixture
 def patterns() -> LabelPatternsConfig:
     return LabelPatternsConfig(
-        flood_pattern=FloodPatternConfig(min_sustained_packets_per_s=10.0, min_window_s=1.0),
+        flood_pattern=FloodPatternConfig(
+            min_sustained_packets_per_s=10.0,
+            min_window_s=1.0,
+            max_packet_size_entropy=2.0,
+            max_unique_dst_ports=5,
+        ),
         scan_pattern=ScanPatternConfig(min_unique_dst_ports_per_source=3, max_window_s=30.0),
         slowrate_pattern=SlowratePatternConfig(
             min_connection_duration_s=5.0, max_bytes_per_s=1000.0, min_concurrent_connections=2
@@ -279,3 +285,60 @@ def test_label_sessions_end_to_end_attaches_labels(schedule, patterns):
     assert len(labeled) == 1
     assert labeled[0].is_attack is True
     assert labeled[0].label_confidence == LabelConfidence.HIGH
+
+
+FLOOD_PATTERN_CFG = FloodPatternConfig(
+    min_sustained_packets_per_s=0.9,
+    min_window_s=5.0,
+    max_packet_size_entropy=1.0,
+    max_unique_dst_ports=2,
+)
+FLOOD_PATTERNS = LabelPatternsConfig(
+    flood_pattern=FLOOD_PATTERN_CFG,
+    scan_pattern=ScanPatternConfig(min_unique_dst_ports_per_source=15, max_window_s=30.0),
+    slowrate_pattern=SlowratePatternConfig(
+        min_connection_duration_s=20.0, max_bytes_per_s=5.0, min_concurrent_connections=5
+    ),
+)
+
+
+def test_flood_pattern_matches_uniform_concentrated_traffic():
+    # High rate, identical packet sizes (zero entropy), single destination
+    # port -- a genuine flood signature.
+    packets = [
+        make_packet(i, teid=1, timestamp=100.0 + i * 0.1, packet_size=64, inner_dst_port=53)
+        for i in range(60)
+    ]
+    assert _level3_pattern_matches("ICMPflood", packets, FLOOD_PATTERNS) is True
+
+
+def test_flood_pattern_does_not_match_high_rate_diverse_traffic():
+    # Regression test for the bug found in confidence_diagnosis/report.md:
+    # a rate-only check matched ordinary sustained conversations (up to
+    # ~13,000 pkt/s in the non-victim-corroborated group) just as easily as
+    # real floods. High rate + varied packet sizes + many destination ports
+    # is NOT a flood signature and must not match, however high the rate.
+    packets = [
+        make_packet(
+            i,
+            teid=1,
+            timestamp=100.0 + i * 0.01,
+            packet_size=64 + (i % 500),  # highly varied sizes -> high entropy
+            inner_dst_port=1000 + (i % 50),  # many distinct destination ports
+        )
+        for i in range(600)
+    ]
+    assert _level3_pattern_matches("ICMPflood", packets, FLOOD_PATTERNS) is False
+
+
+def test_flood_pattern_does_not_match_below_rate_floor():
+    packets = [make_packet(0, teid=1, timestamp=100.0, packet_size=64)]
+    assert _level3_pattern_matches("ICMPflood", packets, FLOOD_PATTERNS) is False
+
+
+def test_flood_pattern_does_not_match_below_min_window():
+    # High rate but the whole burst lasts under min_window_s.
+    packets = [
+        make_packet(i, teid=1, timestamp=100.0 + i * 0.01, packet_size=64) for i in range(10)
+    ]
+    assert _level3_pattern_matches("ICMPflood", packets, FLOOD_PATTERNS) is False

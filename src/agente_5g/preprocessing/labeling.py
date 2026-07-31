@@ -68,7 +68,7 @@ attack sub-window.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator
 from typing import Literal
 
@@ -82,6 +82,7 @@ from agente_5g.models.packet import GTPPacketRecord
 from agente_5g.models.schedule_config import AttackSchedule, LabelPatternsConfig
 from agente_5g.models.session import PDUSessionRecord
 from agente_5g.models.teid_features import TEIDFeatureRecord
+from agente_5g.preprocessing.teid_extractor import shannon_entropy
 
 
 def _hhmm_to_minutes(value: str) -> float:
@@ -165,7 +166,21 @@ def _level3_pattern_matches(
         if duration < flood_cfg.min_window_s:
             return False
         rate = n / duration if duration > 0 else float(n)
-        return rate >= flood_cfg.min_sustained_packets_per_s
+        if rate < flood_cfg.min_sustained_packets_per_s:
+            return False
+        # Rate alone barely discriminates real floods from ordinary sustained
+        # traffic: the confidence diagnosis (outputs/reports/confidence_diagnosis)
+        # found packets that clear a 0.9 pkt/s floor ranging up to ~13,000 pkt/s
+        # among traffic that never touches the victim IP -- nearly any real
+        # conversation qualifies. Floods are also characteristically uniform
+        # (near-identical packet sizes -> low entropy) and concentrated on very
+        # few destination ports, unlike an ordinary multi-service conversation.
+        size_entropy = shannon_entropy(Counter(p.packet_size for p in packets))
+        dst_ports = {p.inner_dst_port for p in packets if p.inner_dst_port is not None}
+        return (
+            size_entropy <= flood_cfg.max_packet_size_entropy
+            and len(dst_ports) <= flood_cfg.max_unique_dst_ports
+        )
 
     if category == "scan":
         scan_cfg = patterns.scan_pattern

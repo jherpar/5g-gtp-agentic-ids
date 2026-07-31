@@ -59,10 +59,23 @@ ATTACK_TYPES = [
 # truncated by it.
 MAX_DURATION_S = 2200.0
 
+# Priority 2 fix (per confidence_diagnosis/report.md): 5s session windows
+# fragment a port scan's signature (needs 15+ distinct ports to corroborate,
+# rarely reached within any single 5s slice even though the full ~500s+ scan
+# clearly shows it) -- scan-type files use 30s windows instead, matching the
+# TEID-level granularity that was already shown to corroborate cleanly.
+SCAN_TYPES = {"SYNScan", "TCPConnect", "UDPScan"}
+
+
+def _session_window_s(attack_type: str) -> int:
+    return 30 if attack_type in SCAN_TYPES else 5
+
+
 HIGH_MEDIUM_MIN_PCT = 30.0  # below this, flag the attack type as unreliable for training
 
 CSV_FIELDS = [
     "attack_type",
+    "session_window_s",
     "n_packets",
     "span_s",
     "n_teid",
@@ -136,6 +149,7 @@ def compute_stats(data: dict) -> dict:
 
     return {
         "attack_type": data["attack_type"],
+        "session_window_s": _session_window_s(data["attack_type"]),
         "n_packets": data["n_packets"],
         "span_s": round(data["span_s"], 1),
         "n_teid": n_teid,
@@ -191,28 +205,33 @@ def render_report(rows: list[dict]) -> str:
 
     lines.append("## Summary table\n")
     header = (
-        "| Attack type | TEIDs | Sessions | Attack % | Benign % "
-        "| HIGH % | MEDIUM % | LOW % | HIGH+MEDIUM % | Usable TEIDs | Usable Sessions |"
+        "| Attack type | Window(s) | TEIDs | Sessions | Attack % "
+        "| TEID HIGH % | MEDIUM % | LOW % | HIGH+MEDIUM % (TEID) | HIGH+MEDIUM % (session) "
+        "| Usable TEIDs | Usable Sessions |"
     )
-    sep = "|---" * 11 + "|"
+    sep = "|---" * 12 + "|"
     lines.append(header)
     lines.append(sep)
     for r in rows:
         flag = " ⚠️" if r["teid_attack_high_medium_pct"] < HIGH_MEDIUM_MIN_PCT else ""
         lines.append(
-            f"| {r['attack_type']}{flag} | {r['n_teid']} | {r['n_sess']} "
-            f"| {r['teid_attack_pct']}% | {r['teid_benign_pct']}% "
+            f"| {r['attack_type']}{flag} | {r['session_window_s']} | {r['n_teid']} | {r['n_sess']} "
+            f"| {r['teid_attack_pct']}% "
             f"| {r['teid_attack_high_pct']}% | {r['teid_attack_medium_pct']}% "
             f"| {r['teid_attack_low_pct']}% | {r['teid_attack_high_medium_pct']}% "
+            f"| {r['sess_attack_high_medium_pct']}% "
             f"| {r['teid_usable_for_training']} ({r['teid_usable_pct']}%) "
             f"| {r['sess_usable_for_training']} ({r['sess_usable_pct']}%) |"
         )
     lines.append(
         "\n_HIGH/MEDIUM/LOW % are computed **within attack-labeled TEID instances "
         "only** (the metric that matters for training ground-truth quality), not "
-        'over all instances. "Usable TEIDs/Sessions" = HIGH+MEDIUM confidence '
-        "instances of either class (attack or benign) -- the estimated size of a "
-        "supervised training set that excludes LOW-confidence labels entirely._\n"
+        'over all instances. "Window(s)" is the session window size used for that '
+        "type -- 30s for scan types (SYNScan/TCPConnect/UDPScan, per the Priority 2 "
+        "fix in confidence_diagnosis/report.md), 5s for everything else. "
+        '"Usable TEIDs/Sessions" = HIGH+MEDIUM confidence instances of either class '
+        "(attack or benign) -- the estimated size of a supervised training set that "
+        "excludes LOW-confidence labels entirely._\n"
     )
 
     flagged = [r for r in rows if r["teid_attack_high_medium_pct"] < HIGH_MEDIUM_MIN_PCT]
@@ -284,6 +303,7 @@ def main() -> None:
             schedule=schedule,
             patterns=patterns,
             max_duration_s=MAX_DURATION_S,
+            session_window_s=_session_window_s(attack_type),
         )
         stats = compute_stats(data)
         rows.append(stats)

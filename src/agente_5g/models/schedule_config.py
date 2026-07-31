@@ -40,6 +40,8 @@ class AttackSchedule(BaseModel):
 class FloodPatternConfig(BaseModel):
     min_sustained_packets_per_s: float
     min_window_s: float
+    max_packet_size_entropy: float
+    max_unique_dst_ports: int
 
 
 class ScanPatternConfig(BaseModel):
