@@ -1,0 +1,38 @@
+# Rule thresholds for the detection agents (src/agente_5g/agents/*).
+# Kept separate from code so they are independently auditable/citable in the
+# thesis, and physically separate from configs/label_patterns.yaml (Level-3
+# label validation) to avoid label/detection circularity.
+#
+# Initial values are order-of-magnitude domain defaults; Phase 1/5 empirical
+# exploration on real sample-mode data should tune these and this file should
+# be updated in place (with the rationale noted in experiment_plan.md).
+
+teid_agent:
+  udp_flood:
+    min_packets_per_s: 200.0
+    min_udp_fraction: 0.9
+    min_packet_count: 100
+  syn_flood:
+    min_syn_count: 50
+    max_ack_to_syn_ratio: 0.1
+  scan:
+    min_unique_dst_ports: 20
+    max_packets_per_dst_port: 3
+  generic_anomaly:
+    z_score_threshold: 3.0
+
+pdu_session_agent:
+  state_machine:
+    # fused_risk_score bands mapping to session states
+    normal_max: 0.25
+    watch_max: 0.5
+    suspicious_max: 0.75
+    # >= suspicious_max -> ATTACK
+  temporal_entropy_low_threshold: 0.3
+  state_transition_rate_high_threshold: 0.5
+
+supervisor_agent:
+  fusion_weights:
+    teid_agent: 0.6
+    pdu_session_agent: 0.4
+  attack_decision_threshold: 0.5

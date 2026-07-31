@@ -1,0 +1,13 @@
+# Overrides for the full thesis-scale run over all 20 pcapng files (~3GB).
+# Intended to be launched via scripts/run_full_pipeline.py, in the background,
+# with per-file checkpointing/resumability (see data/features/_manifest.json).
+mode: full
+
+sample:
+  max_packets_per_file: null
+  max_files: null
+  max_duration_s: null
+
+full:
+  checkpointing: true
+  max_workers: 2

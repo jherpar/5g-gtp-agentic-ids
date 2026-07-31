@@ -1,0 +1,144 @@
+# Authoritative attack schedule transcribed from Tables III & IV of the
+# 5G-NIDD descriptor paper (Siriwardhana et al., 2025, IEEE Data Descriptions).
+# Used as Level-1 evidence in the multi-level labeling strategy
+# (src/agente_5g/preprocessing/labeling.py) — see plan's "Ground-truth
+# labeling strategy" section.
+#
+# CALIBRATION RESULT (Phase 1, empirical, on real pcapng files):
+#   - Packet timestamps in the raw captures are plain UTC epoch seconds.
+#   - `SYNScan_BS1.pcapng` and `SYNScan_BS2.pcapng` both span
+#     2022-08-26 09:30:02-09:38:44 UTC, confirming `year=2022` for the
+#     "26 August" date printed in the paper (verified against two
+#     independent files/base stations).
+#   - `SSH_BS1.pcapng` (pure benign, unrelated to any attack window) spans
+#     2022-09-07 11:39-12:35 UTC — a different day entirely, as expected
+#     since it's a standalone benign-traffic-generation session with no
+#     attack schedule row.
+#   - IMPORTANT CAVEAT: converting the observed UTC window to local time
+#     (Europe/Helsinki, EEST=UTC+3 in August) gives 12:30:02-12:38:44, which
+#     does NOT line up cleanly with Table III's published SYN Scan window of
+#     12:20-12:30 for either base station — it starts ~10 minutes after the
+#     table's window ends. This is consistent with the published schedule
+#     being the *planned* timing rather than an exact-to-the-minute log of
+#     what was actually executed (common drift in real testbed operations).
+#     CONCLUSION: `attack_window`/`session_window` below should be treated as
+#     an approximate expected-time-of-day hint, not a trustworthy per-second
+#     cutoff. The multi-level labeling pipeline (preprocessing/labeling.py)
+#     must therefore treat Level-1 (this file) as coarse, LOW-confidence-only
+#     evidence, and rely primarily on Level 2 (victim IP, see `victim_ip`
+#     below — verified extremely clean: ~10,000 SYN packets to this one IP
+#     vs. single digits to anything else, identical on both BS1 and BS2) and
+#     Level 3 (traffic pattern) to actually locate the attack sub-window
+#     within a file's own observed [first_ts, last_ts] span.
+#   - The Torshammer collection window is transcribed as printed in the
+#     paper's Table IV ("2:45-3:15 am"), almost certainly a transcription
+#     artifact for "pm" (encoded here as PM) — not yet independently
+#     verified against that file's real timestamps; treat with the same LOW
+#     Level-1-only confidence as everything else until checked.
+#
+# All times are local (Europe/Helsinki), 24h HH:MM, EXCEPT where noted above
+# that Level 1 alone should not be trusted at minute granularity.
+
+calibrated: true
+timezone: "Europe/Helsinki"
+year: 2022
+
+# Shared victim/MEC server IP, empirically confirmed identical across BS1
+# and BS2 SYN Scan captures (see calibration note above) — matches the
+# descriptor paper's Fig. 2 topology (single shared victim for both
+# attackers). Used as Level-2 evidence in labeling.py. Not blindly trusted
+# per-file: the labeling pipeline should still independently recompute the
+# dominant destination IP per file as a robustness check rather than hardcode
+# this value as ground truth for attack types it wasn't verified against yet.
+victim_ip: "10.41.150.68"
+
+# Attacker IPs observed during calibration (10.155.15.0/24 attacker subnet,
+# per Fig. 2's "Attacker Network"); BS1 and BS2 use different addresses in
+# that subnet. Provided as a reference/example only — attacker IP may differ
+# across sessions/days, unlike the fixed victim_ip, so Level 2 evidence
+# should weight victim-IP matching over attacker-IP matching.
+attacker_ip_hints:
+  BS1: "10.155.15.1"
+  BS2: "10.155.15.14"
+
+# filename attack-type token (as used in data/raw/BS{1,2}/<token>_BS{1,2}.pcapng)
+# -> official attack name + schedule. `session_window` is the full capture
+# session (background benign traffic runs throughout); `attack_window` is the
+# specific per-base-station sub-window the descriptor paper attributes to the
+# attacker connected to that base station.
+attacks:
+  SSH:
+    official_name: "Benign (SSH/SFTP traffic generation)"
+    benign_only: true
+
+  SYNScan:
+    official_name: "SYN Scan"
+    date: "08-26"
+    session_window: ["12:20", "12:30"]
+    attack_window:
+      BS1: ["12:20", "12:30"]
+      BS2: ["12:20", "12:30"]
+
+  TCPConnect:
+    official_name: "TCP Connect Scan"
+    date: "08-26"
+    session_window: ["12:45", "12:55"]
+    attack_window:
+      BS1: ["12:45", "12:55"]
+      BS2: ["12:45", "12:55"]
+
+  UDPScan:
+    official_name: "UDP Scan"
+    date: "08-26"
+    session_window: ["14:45", "15:15"]
+    attack_window:
+      BS1: ["14:45", "15:15"]
+      BS2: ["14:45", "15:15"]
+
+  ICMPflood:
+    official_name: "ICMP Flood"
+    date: "08-26"
+    session_window: ["14:45", "15:15"]
+    attack_window:
+      BS1: ["14:50", "15:00"]
+      BS2: ["14:55", "15:05"]
+
+  UDPflood:
+    official_name: "UDP Flood"
+    date: "08-26"
+    session_window: ["15:50", "16:20"]
+    attack_window:
+      BS1: ["15:55", "16:05"]
+      BS2: ["16:00", "16:10"]
+
+  SYNflood:
+    official_name: "SYN Flood"
+    date: "08-29"
+    session_window: ["10:30", "11:00"]
+    attack_window:
+      BS1: ["10:35", "10:45"]
+      BS2: ["10:40", "10:50"]
+
+  Goldeneye:
+    official_name: "HTTP Flood"
+    date: "08-29"
+    session_window: ["13:15", "13:45"]
+    attack_window:
+      BS1: ["13:20", "13:30"]
+      BS2: ["13:25", "13:35"]
+
+  Slowloris:
+    official_name: "Slowrate DoS (Slowloris)"
+    date: "08-29"
+    session_window: ["14:10", "14:40"]
+    attack_window:
+      BS1: ["14:15", "14:25"]
+      BS2: ["14:20", "14:30"]
+
+  Torshammer:
+    official_name: "Slowrate DoS (Torshammer / slow POST)"
+    date: "08-29"
+    session_window: ["14:45", "15:15"]  # see AM/PM note above
+    attack_window:
+      BS1: ["14:50", "15:00"]
+      BS2: ["14:55", "15:05"]

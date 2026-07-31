@@ -1,0 +1,21 @@
+# Level-3 "traffic pattern validation" thresholds for ground-truth labeling
+# (src/agente_5g/preprocessing/labeling.py). These are a coarse corroboration
+# signal used ONLY to compute label confidence (HIGH/MEDIUM/LOW) — they must
+# stay independent from configs/thresholds.yaml (agent detection rules) so
+# label quality is never validated using the same logic being evaluated.
+#
+# Initial values are order-of-magnitude domain defaults; Phase 1/4 empirical
+# exploration on real sample-mode data should tune these.
+
+flood_pattern:
+  min_sustained_packets_per_s: 150.0
+  min_window_s: 5.0
+
+scan_pattern:
+  min_unique_dst_ports_per_source: 15
+  max_window_s: 30.0
+
+slowrate_pattern:
+  min_connection_duration_s: 20.0
+  max_bytes_per_s: 5.0
+  min_concurrent_connections: 5

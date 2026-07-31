@@ -1,0 +1,45 @@
+# Data (large binaries, never committed)
+data/raw/**/*.pcapng
+data/processed/**/*.csv
+data/features/**
+!data/features/.gitkeep
+.DS_Store
+**/.DS_Store
+
+# Reference PDFs (large binaries, not source; kept locally)
+*.pdf
+
+# Outputs
+outputs/figures/**
+outputs/reports/**
+outputs/logs/**
+outputs/checkpoints/**
+!outputs/**/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Poetry / packaging
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db

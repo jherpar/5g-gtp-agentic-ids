@@ -1,0 +1,7 @@
+# Overrides for fast dev iteration. Merged on top of base.yaml.
+mode: sample
+
+sample:
+  max_packets_per_file: 20000
+  max_files: null
+  max_duration_s: 60.0

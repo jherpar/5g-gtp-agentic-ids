@@ -1,0 +1,65 @@
+seed: 42
+mode: sample
+
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  data_features: "data/features"
+  outputs: "outputs"
+
+base_stations: ["BS1", "BS2"]
+
+attack_types:
+  - Goldeneye
+  - ICMPflood
+  - Slowloris
+  - SSH
+  - SYNflood
+  - SYNScan
+  - TCPConnect
+  - Torshammer
+  - UDPflood
+  - UDPScan
+
+sample:
+  max_packets_per_file: 20000
+  max_files: null
+  max_duration_s: 60.0
+
+full:
+  checkpointing: true
+  max_workers: 2
+
+session:
+  window_sizes_s: [1, 5, 10, 30]
+
+teid:
+  idle_gap_reuse_threshold_s: 30.0
+
+labeling:
+  schedule_config: "configs/attack_schedule.yaml"
+  # Level-3 pattern-validation thresholds live in configs/label_patterns.yaml,
+  # a file physically separate from configs/thresholds.yaml (agent rules) to
+  # avoid label/detection circularity (see plan risk #7).
+  pattern_config: "configs/label_patterns.yaml"
+
+ml:
+  random_forest:
+    n_estimators: 200
+    max_depth: null
+    random_state: 42
+  xgboost:
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.1
+    random_state: 42
+  split_strategy: "chronological_per_file"
+  test_size: 0.3
+
+llm:
+  enabled: false
+  endpoint: "http://localhost:11434/api/generate"
+  model: "gemma4:latest"
+  fallback_model: "llama3.2:1b"
+  cache_path: "outputs/logs/llm_explanations_cache.jsonl"
+  timeout_s: 30
