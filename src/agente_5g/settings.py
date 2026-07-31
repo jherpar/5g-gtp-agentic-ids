@@ -11,7 +11,7 @@ for reproducibility (see `utils/io.py::snapshot_config`).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -115,14 +115,14 @@ class Settings(BaseSettings):
         return path if path.is_absolute() else PROJECT_ROOT / path
 
 
-def _read_yaml(path: Path) -> dict:
+def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     with path.open("r", encoding="utf-8") as fh:
         return yaml.safe_load(fh) or {}
 
 
-def _deep_merge(base: dict, override: dict) -> dict:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     merged = dict(base)
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):

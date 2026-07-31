@@ -42,7 +42,7 @@ def ensure_gtp_contrib_loaded() -> bool:
     try:
         from scapy.config import conf
         from scapy.layers.inet import UDP
-        from scapy.layers.l2 import bind_layers
+        from scapy.layers.l2 import bind_layers  # type: ignore[attr-defined]
 
         conf.load_layers.append("gtp") if "gtp" not in conf.load_layers else None
         from scapy.contrib import gtp  # noqa: F401  (import triggers layer registration)

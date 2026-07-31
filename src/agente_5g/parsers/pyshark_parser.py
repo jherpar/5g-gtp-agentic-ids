@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from agente_5g.models.packet import GTPPacketRecord
 from agente_5g.parsers.base import PacketParser
@@ -67,7 +67,13 @@ class PySharkPacketParser(PacketParser):
             cap.close()
 
     def _parse_packet(
-        self, pkt, packet_id, capture_file, base_station, source_attack_type, ts
+        self,
+        pkt: Any,
+        packet_id: int,
+        capture_file: str,
+        base_station: Literal["BS1", "BS2"],
+        source_attack_type: str,
+        ts: float,
     ) -> GTPPacketRecord | None:
         if not hasattr(pkt, "ip"):
             return None
@@ -80,7 +86,7 @@ class PySharkPacketParser(PacketParser):
 
         inner_src_ip = inner_dst_ip = None
         inner_src_port = inner_dst_port = None
-        inner_proto = None
+        inner_proto: Literal["tcp", "udp", "icmp", "other"] | None = None
         tcp_syn = tcp_ack = tcp_rst = tcp_fin = False
 
         # When GTP-U encapsulated, pyshark exposes the inner IP as a second

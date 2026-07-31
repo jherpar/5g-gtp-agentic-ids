@@ -5,7 +5,8 @@ from collections import Counter
 
 from agente_5g.preprocessing.teid_extractor import (
     TEIDFeatureExtractor,
-    classify_direction,
+    infer_initiator_ip,
+    packet_direction,
     shannon_entropy,
 )
 from tests.fixtures.packet_records import make_packet as _pkt
@@ -154,7 +155,9 @@ def test_tcp_flag_counts():
     assert feat.fin_count == 1
 
 
-def test_directionality_uplink_when_src_private_dst_public():
+def test_directionality_is_one_when_every_packet_is_from_the_initiator():
+    # All packets flow the same way (UE -> peer): the first packet's sender
+    # is the initiator, and every subsequent packet matches it.
     records = [
         _pkt(
             i,
@@ -169,33 +172,57 @@ def test_directionality_uplink_when_src_private_dst_public():
     assert feat.teid_directionality == 1.0
 
 
-def test_directionality_downlink_when_src_public_dst_private():
+def test_directionality_reflects_mixed_uplink_and_downlink_bytes():
+    # First packet (attacker/UE -> peer, 100 bytes) establishes the
+    # initiator; a later response (peer -> UE, 300 bytes) is downlink.
     records = [
         _pkt(
-            i,
+            0,
             teid=12,
-            timestamp=100.0 + i,
-            inner_src_ip="93.184.216.34",
-            inner_dst_ip="10.155.15.5",
-        )
-        for i in range(3)
+            timestamp=100.0,
+            inner_src_ip="10.155.15.1",
+            inner_dst_ip="10.41.150.68",
+            packet_size=100,
+        ),
+        _pkt(
+            1,
+            teid=12,
+            timestamp=100.5,
+            inner_src_ip="10.41.150.68",
+            inner_dst_ip="10.155.15.1",
+            packet_size=300,
+        ),
     ]
     (feat,) = list(TEIDFeatureExtractor().extract(records))
-    assert feat.teid_directionality == 0.0
+    assert math.isclose(feat.teid_directionality, 100 / 400)
 
 
-def test_directionality_neutral_when_unclassifiable():
-    # both private (e.g. tunnel-internal addressing) -> "unknown" direction
-    records = [_pkt(0, teid=13, timestamp=100.0, inner_src_ip="10.0.0.5", inner_dst_ip="10.0.0.6")]
+def test_directionality_neutral_when_no_packet_has_inner_src_ip():
+    # e.g. GTP-U control messages (echo request/response) with no inner IP.
+    records = [_pkt(0, teid=13, timestamp=100.0, inner_src_ip=None, inner_dst_ip=None)]
     (feat,) = list(TEIDFeatureExtractor().extract(records))
     assert feat.teid_directionality == 0.5
 
 
-def test_classify_direction_helper_directly():
-    assert classify_direction("10.155.15.5", "93.184.216.34") == "uplink"
-    assert classify_direction("93.184.216.34", "10.155.15.5") == "downlink"
-    assert classify_direction("10.0.0.5", "10.0.0.6") == "unknown"
-    assert classify_direction(None, "93.184.216.34") == "unknown"
+def test_infer_initiator_ip_picks_earliest_packets_sender():
+    packets = [
+        _pkt(0, teid=1, timestamp=100.5, inner_src_ip="B", inner_dst_ip="A"),
+        _pkt(1, teid=1, timestamp=100.0, inner_src_ip="A", inner_dst_ip="B"),  # earliest
+    ]
+    assert infer_initiator_ip(packets) == "A"
+
+
+def test_infer_initiator_ip_returns_none_without_any_inner_src_ip():
+    packets = [_pkt(0, teid=1, timestamp=100.0, inner_src_ip=None, inner_dst_ip=None)]
+    assert infer_initiator_ip(packets) is None
+
+
+def test_packet_direction_helper_directly():
+    pkt = _pkt(0, teid=1, timestamp=100.0, inner_src_ip="A", inner_dst_ip="B")
+    assert packet_direction(pkt, initiator_ip="A") == "uplink"
+    assert packet_direction(pkt, initiator_ip="B") == "downlink"
+    assert packet_direction(pkt, initiator_ip="C") == "unknown"
+    assert packet_direction(pkt, initiator_ip=None) == "unknown"
 
 
 def test_shannon_entropy_of_uniform_distribution_is_maximal():

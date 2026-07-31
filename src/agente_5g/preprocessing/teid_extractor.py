@@ -24,12 +24,19 @@ alone):
   - teid_fanout: count of distinct (dst_ip, dst_port) endpoints touched --
     deliberately distinct from unique_dst_ips (IP-only), so a scan hitting
     many ports on one IP is visible here even when unique_dst_ips is low.
-  - teid_directionality: uplink_bytes / (uplink_bytes + downlink_bytes),
-    where direction is inferred by classifying the inner src/dst as
-    private vs. public IPs (UEs get private/NAT'd addresses; the wider
-    internet doesn't), rather than a hardcoded outer-IP topology, since
-    which literal outer IP is the eNB side vs. the core side is not fixed
-    across capture files. 0.5 (neutral) when nothing could be classified.
+  - teid_directionality: uplink_bytes / (uplink_bytes + downlink_bytes).
+    Direction is inferred from flow initiation (the same convention NetFlow
+    tools like Argus use: whoever sent the first packet of the flow is the
+    source), not from public/private IP classification -- an earlier version
+    used private-vs-public, but this dataset's testbed puts the victim/MEC
+    server on a private RFC1918 address too (10.41.150.68, confirmed during
+    Phase 1 calibration), so attacker-to-victim traffic is a
+    private-to-private flow that a public/private heuristic can't tell
+    apart. Since a single TEID is protocol-unidirectional in GTP-U (each
+    tunnel endpoint allocates and owns the TEID used to address it), the
+    initiator inferred from the instance's earliest packet applies to the
+    whole instance. 0.5 (neutral) only if no packet in the instance has a
+    determinable inner_src_ip at all.
 
 Labeling (`label`/`is_attack`/`label_confidence`) is intentionally left
 unset here -- that's `preprocessing/labeling.py`'s job (Phase 4), applied as
@@ -39,12 +46,11 @@ schedule/labeling heuristics.
 
 from __future__ import annotations
 
-import ipaddress
 import math
 import statistics
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator
-from typing import Literal
+from typing import Any, Literal
 
 from agente_5g.models.packet import GTPPacketRecord
 from agente_5g.models.teid_features import TEIDFeatureRecord
@@ -52,26 +58,30 @@ from agente_5g.models.teid_features import TEIDFeatureRecord
 Direction = Literal["uplink", "downlink", "unknown"]
 
 
-def _is_private_ip(ip: str | None) -> bool | None:
-    if not ip:
+def infer_initiator_ip(packets: list[GTPPacketRecord]) -> str | None:
+    """The inner_src_ip of the temporally-earliest packet with one set.
+
+    `packets` need not be pre-sorted. Returns None if no packet in the list
+    has a determinable inner_src_ip (e.g. GTP-U control messages with no
+    inner IP payload).
+    """
+    candidates = [p for p in packets if p.inner_src_ip]
+    if not candidates:
         return None
-    try:
-        return ipaddress.ip_address(ip).is_private
-    except ValueError:
-        return None
+    return min(candidates, key=lambda p: p.timestamp).inner_src_ip
 
 
-def classify_direction(inner_src_ip: str | None, inner_dst_ip: str | None) -> Direction:
-    src_private = _is_private_ip(inner_src_ip)
-    dst_private = _is_private_ip(inner_dst_ip)
-    if src_private is True and dst_private is False:
+def packet_direction(packet: GTPPacketRecord, initiator_ip: str | None) -> Direction:
+    if initiator_ip is None:
+        return "unknown"
+    if packet.inner_src_ip == initiator_ip:
         return "uplink"
-    if dst_private is True and src_private is False:
+    if packet.inner_dst_ip == initiator_ip:
         return "downlink"
     return "unknown"
 
 
-def shannon_entropy(counter: Counter) -> float:
+def shannon_entropy(counter: Counter[Any]) -> float:
     total = sum(counter.values())
     if total == 0:
         return 0.0
@@ -146,9 +156,10 @@ class TEIDFeatureExtractor:
 
         size_entropy = shannon_entropy(Counter(sizes))
 
+        initiator_ip = infer_initiator_ip(packets)
         uplink_bytes = downlink_bytes = 0
         for p in packets:
-            direction = classify_direction(p.inner_src_ip, p.inner_dst_ip)
+            direction = packet_direction(p, initiator_ip)
             if direction == "uplink":
                 uplink_bytes += p.packet_size
             elif direction == "downlink":

@@ -4,10 +4,15 @@ A session groups packets by (ue_ip, teid) within a fixed-size, epoch-aligned
 temporal window (`window_size_s`, one of {1, 5, 10, 30} per
 `configs/base.yaml`'s `session.window_sizes_s` -- callers build a separate
 session dataset at each granularity, e.g. to compare how detection speed
-changes with window size for RQ4). UE IP is inferred the same way TEID-level
-directionality is (private vs. public IP classification of inner src/dst),
-not read from `GTPPacketRecord.ue_ip` (left unset by the parser); packets
-whose direction can't be classified contribute to no session.
+changes with window size for RQ4). UE IP is inferred via flow-initiation
+(same convention as `teid_extractor.infer_initiator_ip`: whoever sent a
+TEID's earliest packet owns that tunnel), not read from
+`GTPPacketRecord.ue_ip` (left unset by the parser) and not from public/
+private IP classification -- this dataset's victim/MEC server also sits on a
+private address, so a public/private split can't tell attacker and victim
+apart. The initiator is resolved once per TEID over the *whole* file (a
+single pass before windowing) since GTP-U TEIDs are protocol-unidirectional,
+then reused for every window that TEID appears in.
 
 `session_id = sha256(f"{ue_ip}|{teid}|{window_start}")` uses the window's
 epoch-aligned boundary rather than any packet's actual arrival time, so it's
@@ -35,7 +40,7 @@ from typing import Literal
 
 from agente_5g.models.packet import GTPPacketRecord
 from agente_5g.models.session import PDUSessionRecord
-from agente_5g.preprocessing.teid_extractor import classify_direction, shannon_entropy
+from agente_5g.preprocessing.teid_extractor import infer_initiator_ip, shannon_entropy
 
 _SUB_BINS = 10
 _VALID_WINDOW_SIZES = (1, 5, 10, 30)
@@ -63,24 +68,26 @@ class SessionBuilder:
         self.window_size_s: Literal[1, 5, 10, 30] = window_size_s
 
     def build(self, records: Iterable[GTPPacketRecord]) -> Iterator[PDUSessionRecord]:
+        gtp_records = [r for r in records if r.is_gtp and r.teid is not None]
+
+        packets_by_teid: dict[int, list[GTPPacketRecord]] = defaultdict(list)
+        for record in gtp_records:
+            teid = record.teid
+            assert teid is not None  # guaranteed by the filter above; narrows for mypy
+            packets_by_teid[teid].append(record)
+        initiator_by_teid = {
+            teid: infer_initiator_ip(packets) for teid, packets in packets_by_teid.items()
+        }
+
         buckets: dict[tuple[str, int, int], list[GTPPacketRecord]] = defaultdict(list)
-
-        for record in records:
-            if not record.is_gtp or record.teid is None:
-                continue
-
-            direction = classify_direction(record.inner_src_ip, record.inner_dst_ip)
-            if direction == "uplink":
-                ue_ip = record.inner_src_ip
-            elif direction == "downlink":
-                ue_ip = record.inner_dst_ip
-            else:
-                continue
+        for record in gtp_records:
+            teid = record.teid
+            assert teid is not None
+            ue_ip = initiator_by_teid.get(teid)
             if ue_ip is None:
                 continue
-
             window_index = int(record.timestamp // self.window_size_s)
-            buckets[(ue_ip, record.teid, window_index)].append(record)
+            buckets[(ue_ip, teid, window_index)].append(record)
 
         for (ue_ip, teid, window_index), packets in buckets.items():
             yield self._build_record(ue_ip, teid, window_index, packets)
@@ -115,7 +122,7 @@ class SessionBuilder:
         # computed from `100.7 - 100.0` landing a hair under the next
         # sub-bin boundary and truncating down) pushing samples into the
         # wrong sub-bin at exact-looking boundaries.
-        sub_bin_counts: Counter = Counter()
+        sub_bin_counts: Counter[int] = Counter()
         for p in packets:
             offset = p.timestamp - window_start
             sub_bin = min(int(offset / self.window_size_s * _SUB_BINS + 1e-9), _SUB_BINS - 1)

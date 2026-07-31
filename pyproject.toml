@@ -35,6 +35,7 @@ ruff = "^0.8"
 black = "^24.10"
 mypy = "^1.13"
 ipykernel = "^6.29"
+types-pyyaml = "^6.0.12.20260724"
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]

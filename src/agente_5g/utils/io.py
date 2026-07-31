@@ -40,7 +40,8 @@ def read_manifest(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     with path.open("r", encoding="utf-8") as fh:
-        return json.load(fh)
+        manifest: dict[str, Any] = json.load(fh)
+        return manifest
 
 
 def write_manifest(path: Path, manifest: dict[str, Any]) -> None:

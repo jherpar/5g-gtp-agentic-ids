@@ -8,19 +8,20 @@ from agente_5g.preprocessing.session_builder import SessionBuilder
 from tests.fixtures.packet_records import make_packet
 
 PRIVATE_UE_IP = "10.155.15.5"
-PUBLIC_PEER_IP = "93.184.216.34"
+PEER_IP = "93.184.216.34"
 
 
 def _up(packet_id: int, teid: int, timestamp: float, **kwargs):
-    """An uplink packet: UE (private) -> peer (public)."""
+    """An uplink packet: UE -> peer."""
     kwargs.setdefault("inner_src_ip", PRIVATE_UE_IP)
-    kwargs.setdefault("inner_dst_ip", PUBLIC_PEER_IP)
+    kwargs.setdefault("inner_dst_ip", PEER_IP)
     return make_packet(packet_id, teid, timestamp, **kwargs)
 
 
 def _down(packet_id: int, teid: int, timestamp: float, **kwargs):
-    """A downlink packet: peer (public) -> UE (private)."""
-    kwargs.setdefault("inner_src_ip", PUBLIC_PEER_IP)
+    """A downlink packet: peer -> UE (a response; only meaningful once an
+    uplink packet on the same TEID has already established the initiator)."""
+    kwargs.setdefault("inner_src_ip", PEER_IP)
     kwargs.setdefault("inner_dst_ip", PRIVATE_UE_IP)
     return make_packet(packet_id, teid, timestamp, **kwargs)
 
@@ -40,16 +41,35 @@ def test_two_uplink_packets_same_window_form_one_session():
     assert session.end_time == 101.0
 
 
-def test_downlink_packet_infers_ue_ip_as_private_destination():
-    (session,) = list(SessionBuilder(window_size_s=1).build([_down(0, 2, 100.0)]))
-    assert session.ue_ip == PRIVATE_UE_IP
+def test_downlink_response_keeps_ue_ip_from_the_initiating_uplink_packet():
+    # The initiator is resolved once per TEID over the whole file: an
+    # uplink packet establishes ue_ip, and a later downlink response in a
+    # different window still attributes back to the same UE.
+    records = [_up(0, 2, 100.0), _down(1, 2, 105.0)]
+    sessions = sorted(SessionBuilder(window_size_s=1).build(records), key=lambda s: s.start_time)
+
+    assert len(sessions) == 2
+    assert all(s.ue_ip == PRIVATE_UE_IP for s in sessions)
 
 
-def test_unclassifiable_direction_packets_are_excluded():
-    both_private = make_packet(0, 3, 100.0, inner_src_ip="10.0.0.5", inner_dst_ip="10.0.0.6")
-    records = [both_private, _up(1, 3, 100.1)]
+def test_both_private_endpoints_still_form_a_session_via_flow_initiation():
+    # Attacker (private) -> victim (also private, e.g. this dataset's MEC
+    # server) is a real scenario a public/private split can't distinguish;
+    # flow-initiation (first packet's source) resolves it correctly instead.
+    attacker_ip = "10.155.15.1"
+    victim_ip = "10.41.150.68"
+    records = [
+        make_packet(0, teid=9, timestamp=100.0, inner_src_ip=attacker_ip, inner_dst_ip=victim_ip)
+    ]
     (session,) = list(SessionBuilder(window_size_s=1).build(records))
-    assert session.traffic_volume_bytes == 100  # only the classifiable packet counted
+    assert session.ue_ip == attacker_ip
+
+
+def test_teid_with_no_determinable_inner_ip_forms_no_session():
+    # e.g. GTP-U control messages (echo request/response) carry no inner IP.
+    control_only = make_packet(0, teid=3, timestamp=100.0, inner_src_ip=None, inner_dst_ip=None)
+    sessions = list(SessionBuilder(window_size_s=1).build([control_only]))
+    assert sessions == []
 
 
 def test_packets_in_different_windows_form_separate_sessions():
