@@ -48,7 +48,11 @@ class TEIDFeatureRecord(BaseModel):
     teid_fanout: int
     teid_directionality: float  # uplink_bytes / (uplink_bytes + downlink_bytes)
 
-    label: str
-    is_attack: bool
-    label_confidence: LabelConfidence
+    # Populated by preprocessing/labeling.py in a separate enrichment pass
+    # (Phase 4) that runs after extraction — None here means "not yet
+    # labeled", not "known benign". Use `.model_copy(update=...)` to attach
+    # labels post hoc since the model is frozen.
+    label: str | None = None
+    is_attack: bool | None = None
+    label_confidence: LabelConfidence | None = None
     label_evidence: list[str] = []

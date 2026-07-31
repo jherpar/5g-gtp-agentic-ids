@@ -32,10 +32,15 @@ class PDUSessionRecord(BaseModel):
     state_transition_rate: float
     temporal_entropy: float
 
-    state_sequence: list[str]
-    final_state: Literal["NORMAL", "WATCH", "SUSPICIOUS", "ATTACK"]
+    # Populated by agents/pdu_session_agent.py (Phase 5) in a separate pass
+    # over the session records built here — None/empty means "not yet
+    # evaluated by the agent", not "no state".
+    state_sequence: list[str] = []
+    final_state: Literal["NORMAL", "WATCH", "SUSPICIOUS", "ATTACK"] | None = None
 
-    label: str
-    is_attack: bool
-    label_confidence: LabelConfidence
+    # Populated by preprocessing/labeling.py (Phase 4) in a separate
+    # enrichment pass — None here means "not yet labeled".
+    label: str | None = None
+    is_attack: bool | None = None
+    label_confidence: LabelConfidence | None = None
     label_evidence: list[str] = []
