@@ -36,9 +36,21 @@ confidence tier rather than a silent binary label:
     rather than concentration on either side. Scans check port fan-out;
     slow-rate attacks check many long-lived low-throughput connections.
 
-Confidence:
+Confidence (Phase 4C redesign -- Level 2 is no longer a mandatory MEDIUM
+gate): evidence-source quantification
+(outputs/reports/evidence_quantification/report.md) found Level 2
+(victim IP) fires on only ~3% of instances and, whenever Level 1 fires,
+P(Level 2 | Level 3) can be far below 1 -- i.e. genuine Level-3 pattern
+matches (including the empirically zero-overlap-validated
+connection_flood check) were being silently discarded to LOW just because
+victim-IP corroboration didn't also fire. Victim IP is itself an
+imperfect signal (see outputs/reports/flood_evidence_inspection/report.md
+-- some victim-IP "corroborated" SYNflood instances turned out to be
+ordinary background traffic incidentally touching a shared IP). Level 2
+and Level 3 are therefore now treated as interchangeable corroborating
+evidence:
   HIGH   -- Level 1 + Level 2 + Level 3 all agree the instance is an attack.
-  MEDIUM -- Level 1 + Level 2 agree, Level 3 inconclusive/didn't fire.
+  MEDIUM -- Level 1 + (Level 2 OR Level 3), but not both.
   LOW    -- only Level 1 fired (plausibly the concurrent benign traffic the
             descriptor paper documents), OR the instance falls outside the
             approximate attack sub-window yet Level 2/3 unexpectedly fired
@@ -49,14 +61,14 @@ traffic). Files with no attack schedule row (`SSH_BS{1,2}.pcapng`) are
 always Benign at HIGH confidence.
 
 Level 1 alone is NEVER sufficient to call something an attack -- it only
-identifies *when an attack could plausibly appear*; Level 2/3 must
-corroborate before MEDIUM/HIGH confidence is assigned. Instances outside the
-approximate attack window are always labeled Benign, regardless of Level 2/3
-evidence (surprising corroboration there just lowers confidence in that
-Benign label rather than flipping it to Attack), since a single fixed
-victim IP or a coarse pattern check on its own is far too weak a signal to
-overturn the schedule's structural evidence about *where in the file* an
-attack was staged.
+identifies *when an attack could plausibly appear*; at least one of Level
+2/3 must corroborate before MEDIUM/HIGH confidence is assigned. Instances
+outside the approximate attack window are always labeled Benign, regardless
+of Level 2/3 evidence (surprising corroboration there just lowers confidence
+in that Benign label rather than flipping it to Attack), since a single
+fixed victim IP or a coarse pattern check on its own is far too weak a
+signal to overturn the schedule's structural evidence about *where in the
+file* an attack was staged.
 
 KNOWN LIMITATION, verified against real data: for the port-scan attack types
 (SYNScan/TCPConnect/UDPScan), Table III of the descriptor paper gives no
@@ -285,7 +297,7 @@ def _classify(
     label = attack_type.value if attack_type is not None else source_attack_type
     if level2 and level3:
         confidence = LabelConfidence.HIGH
-    elif level2:
+    elif level2 or level3:
         confidence = LabelConfidence.MEDIUM
     else:
         confidence = LabelConfidence.LOW

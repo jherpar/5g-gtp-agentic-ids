@@ -189,6 +189,37 @@ def test_inside_window_with_victim_ip_only_is_medium_confidence(schedule, patter
     assert set(evidence) == {"SCHEDULE", "VICTIM_IP"}
 
 
+def test_inside_window_with_pattern_only_is_medium_confidence(schedule, patterns):
+    # Phase 4C confidence-model redesign: MEDIUM = Schedule + (Victim OR
+    # Pattern), not just Schedule + Victim. A pattern match with no victim-IP
+    # corroboration must no longer be silently gated down to LOW.
+    packets = [
+        make_packet(
+            i,
+            teid=1,
+            timestamp=100.0 + i * 0.1,
+            inner_src_ip=ATTACKER_IP,
+            inner_dst_ip="8.8.8.8",  # NOT the victim IP
+            inner_dst_port=1000 + i,
+        )
+        for i in range(5)  # 5 distinct dst ports >= scan threshold of 3
+    ]
+    label, is_attack, confidence, evidence = _classify(
+        source_attack_type="SYNScan",
+        base_station="BS1",
+        instance_start=100.0,
+        instance_end=100.4,
+        instance_packets=packets,
+        schedule=schedule,
+        patterns=patterns,
+        file_first_ts=0.0,
+        file_last_ts=600.0,
+    )
+    assert is_attack is True
+    assert confidence == LabelConfidence.MEDIUM
+    assert set(evidence) == {"SCHEDULE", "PATTERN"}
+
+
 def test_inside_window_with_victim_ip_and_pattern_is_high_confidence(schedule, patterns):
     # 5 distinct dst ports (>= scan threshold of 3) all touching the victim IP.
     packets = [
