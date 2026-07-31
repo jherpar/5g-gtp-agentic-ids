@@ -13,19 +13,47 @@
 # fired) run at ~1.03 pkt/s sustained over ~612s -- a controlled-rate
 # tool, not a linespeed flood.
 #
-# PLACEHOLDER, pending scripts/calibrate_flood_pattern.py results:
 # max_packet_size_entropy/max_unique_dst_ports were added because the rate
 # floor alone turned out to match nearly any sustained conversation (see
 # outputs/reports/confidence_diagnosis/report.md -- 40-65% of attack-labeled
 # TEIDs "matched pattern" without ever touching the victim IP, with rates up
-# to ~13,000 pkt/s in the non-corroborated group). These starting values are
-# order-of-magnitude guesses, not yet calibrated against real corroborated-
-# vs-not distributions; update once the calibration script finishes.
+# to ~13,000 pkt/s in the non-corroborated group). This category now applies
+# ONLY to ICMPflood/UDPflood (volumetric floods) -- SYNflood/Goldeneye moved
+# to connection_flood_pattern below, since calibrate_flood_pattern.py found
+# their victim-IP-corroborated instances have HIGH entropy and thousands of
+# unique ports, the opposite of "uniform + concentrated" (see
+# outputs/reports/evidence_quantification/report.md). These values are still
+# order-of-magnitude guesses for ICMP/UDP specifically (calibration sample
+# was only n=2 corroborated instances per type) -- update if a larger
+# ICMP/UDP-specific calibration becomes available.
 flood_pattern:
   min_sustained_packets_per_s: 0.9
   min_window_s: 5.0
   max_packet_size_entropy: 2.0
   max_unique_dst_ports: 5
+
+# "Connection-oriented flood" family (SYNflood, Goldeneye): unlike
+# ICMPflood/UDPflood, their real attack backscatter shows one side of the
+# connection (source ports for an outbound SYN flood, destination ports for
+# the victim's HTTP/reply traffic) fanning out into the thousands while the
+# other side stays pinned to a handful of well-known ports -- extreme
+# port-cardinality asymmetry, not concentration on both sides.
+#
+# min_port_cardinality_asymmetry=200.0 was chosen from real distribution
+# statistics across BS1+BS2 (outputs/reports/connection_flood_hypothesis/report.md),
+# NOT an invented round number:
+#   SYNflood:  corroborated asymmetry range [276.5, 1648.3]  (n=5)
+#              non-corroborated: p90=20.5, max=54.0            (n=40)
+#   Goldeneye: corroborated asymmetry range [2283.3, 4631.3]  (n=4)
+#              non-corroborated: p90=56.4, max=126.5            (n=45)
+# Combined across both types, the non-corroborated max is 126.5 and the
+# corroborated min is 276.5 -- a conservative cut roughly midway between
+# them (200.0) has ZERO overlap with either group's population, on both
+# base stations. Destination-IP concentration and connection churn were
+# also evaluated but showed heavy overlap between corroborated/
+# non-corroborated instances, so they are deliberately NOT used here.
+connection_flood_pattern:
+  min_port_cardinality_asymmetry: 200.0
 
 scan_pattern:
   min_unique_dst_ports_per_source: 15

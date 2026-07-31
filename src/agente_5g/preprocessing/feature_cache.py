@@ -16,6 +16,7 @@ compute and save" pattern).
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TypeVar
@@ -45,7 +46,19 @@ def save_records(records: Iterable[BaseModel], path: Path) -> None:
 
 def load_records(path: Path, model: type[ModelT]) -> list[ModelT]:
     df = pd.read_parquet(path)
-    return [model.model_validate(row) for row in df.to_dict(orient="records")]
+    # Parquet has no distinct NaN-vs-None for numeric columns: an `int |
+    # None` field written as None comes back as float NaN once the column
+    # is promoted to float64 to hold the missing value, which pydantic
+    # rejects for `int | None` fields (NaN isn't a finite number and isn't
+    # None either). Normalize NaN back to None before validating.
+    records = []
+    for row in df.to_dict(orient="records"):
+        clean_row = {
+            key: (None if isinstance(value, float) and math.isnan(value) else value)
+            for key, value in row.items()
+        }
+        records.append(model.model_validate(clean_row))
+    return records
 
 
 def save_packets(records: Iterable[GTPPacketRecord], path: Path) -> None:

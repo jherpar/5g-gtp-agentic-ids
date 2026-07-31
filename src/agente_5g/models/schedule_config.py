@@ -44,6 +44,23 @@ class FloodPatternConfig(BaseModel):
     max_unique_dst_ports: int
 
 
+class ConnectionFloodPatternConfig(BaseModel):
+    """Corroboration rule for the "connection-oriented flood" family
+    (SYNflood, Goldeneye) -- see `_level3_pattern_matches` in
+    preprocessing/labeling.py for why these two don't fit the volumetric
+    `FloodPatternConfig` (uniform payload size, concentrated destination
+    ports): they instead show extreme asymmetry between unique source-port
+    and destination-port counts. `min_port_cardinality_asymmetry` was
+    empirically chosen (not guessed) from
+    outputs/reports/connection_flood_hypothesis/report.md, which found ZERO
+    overlap between victim-IP-corroborated and non-corroborated instances
+    on this metric across both BS1 and BS2 (SYNflood: corroborated min
+    276.5 vs. non-corroborated max 54.0; Goldeneye: corroborated min 2283.3
+    vs. non-corroborated max 126.5)."""
+
+    min_port_cardinality_asymmetry: float
+
+
 class ScanPatternConfig(BaseModel):
     min_unique_dst_ports_per_source: int
     max_window_s: float
@@ -57,6 +74,7 @@ class SlowratePatternConfig(BaseModel):
 
 class LabelPatternsConfig(BaseModel):
     flood_pattern: FloodPatternConfig
+    connection_flood_pattern: ConnectionFloodPatternConfig
     scan_pattern: ScanPatternConfig
     slowrate_pattern: SlowratePatternConfig
 

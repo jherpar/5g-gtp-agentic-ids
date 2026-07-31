@@ -21,12 +21,20 @@ confidence tier rather than a silent binary label:
     identical across BS1/BS2 SYN Scan captures during calibration): does
     this instance's traffic touch the shared victim/MEC server?
   Level 3 -- Traffic pattern validation (`configs/label_patterns.yaml`):
-    a coarse, attack-type-specific structural check (sustained high rate
-    for floods, port fan-out for scans, many long-lived low-throughput
-    connections for slow-rate attacks) computed with thresholds and code
-    entirely separate from `agents/rules.py`'s detection thresholds, so
-    label quality is never validated using the same logic being evaluated
-    against these labels.
+    a coarse, attack-type-specific structural check computed with
+    thresholds and code entirely separate from `agents/rules.py`'s
+    detection thresholds, so label quality is never validated using the
+    same logic being evaluated against these labels. Two flood
+    sub-families exist because they are not behaviorally homogeneous
+    (empirically confirmed, not assumed -- see
+    outputs/reports/connection_flood_hypothesis/report.md): "flood"
+    (ICMPflood/UDPflood) checks sustained rate + uniform payload size +
+    concentrated destination ports; "connection_flood"
+    (SYNflood/Goldeneye) instead checks port-cardinality asymmetry (see
+    `ConnectionFloodPatternConfig`), since those two show extreme
+    imbalance between unique source-port and destination-port counts
+    rather than concentration on either side. Scans check port fan-out;
+    slow-rate attacks check many long-lived low-throughput connections.
 
 Confidence:
   HIGH   -- Level 1 + Level 2 + Level 3 all agree the instance is an attack.
@@ -138,8 +146,8 @@ def _overlaps(a_start: float, a_end: float, b_start: float, b_end: float) -> boo
 _PATTERN_CATEGORY: dict[str, str] = {
     "ICMPflood": "flood",
     "UDPflood": "flood",
-    "SYNflood": "flood",
-    "Goldeneye": "flood",
+    "SYNflood": "connection_flood",
+    "Goldeneye": "connection_flood",
     "Slowloris": "slowrate",
     "Torshammer": "slowrate",
     "SYNScan": "scan",
@@ -181,6 +189,25 @@ def _level3_pattern_matches(
             size_entropy <= flood_cfg.max_packet_size_entropy
             and len(dst_ports) <= flood_cfg.max_unique_dst_ports
         )
+
+    if category == "connection_flood":
+        # SYNflood/Goldeneye don't fit the volumetric "uniform payload,
+        # concentrated ports" flood signature (see calibrate_flood_pattern.py
+        # output): their real attack backscatter shows one side of the
+        # connection (source ports for an outbound flood, destination ports
+        # for the victim's replies) fanning out into the thousands while the
+        # other side stays pinned to a handful of well-known ports. Dest-IP
+        # concentration and connection churn were also evaluated
+        # (outputs/reports/connection_flood_hypothesis/report.md) but had
+        # heavy overlap between corroborated and non-corroborated instances,
+        # so they are NOT used as gating conditions here -- only port-
+        # cardinality asymmetry showed zero overlap, on both BS1 and BS2.
+        conn_cfg = patterns.connection_flood_pattern
+        src_ports = {p.inner_src_port for p in packets if p.inner_src_port is not None}
+        dst_ports = {p.inner_dst_port for p in packets if p.inner_dst_port is not None}
+        n_src, n_dst = len(src_ports), len(dst_ports)
+        asymmetry = max(n_src, n_dst) / max(1, min(n_src, n_dst))
+        return asymmetry >= conn_cfg.min_port_cardinality_asymmetry
 
     if category == "scan":
         scan_cfg = patterns.scan_pattern

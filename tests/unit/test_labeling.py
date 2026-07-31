@@ -8,6 +8,7 @@ from agente_5g.models.labels import LabelConfidence
 from agente_5g.models.schedule_config import (
     AttackSchedule,
     AttackScheduleEntry,
+    ConnectionFloodPatternConfig,
     FloodPatternConfig,
     LabelPatternsConfig,
     ScanPatternConfig,
@@ -62,6 +63,7 @@ def patterns() -> LabelPatternsConfig:
             max_packet_size_entropy=2.0,
             max_unique_dst_ports=5,
         ),
+        connection_flood_pattern=ConnectionFloodPatternConfig(min_port_cardinality_asymmetry=200.0),
         scan_pattern=ScanPatternConfig(min_unique_dst_ports_per_source=3, max_window_s=30.0),
         slowrate_pattern=SlowratePatternConfig(
             min_connection_duration_s=5.0, max_bytes_per_s=1000.0, min_concurrent_connections=2
@@ -293,8 +295,10 @@ FLOOD_PATTERN_CFG = FloodPatternConfig(
     max_packet_size_entropy=1.0,
     max_unique_dst_ports=2,
 )
+CONNECTION_FLOOD_PATTERN_CFG = ConnectionFloodPatternConfig(min_port_cardinality_asymmetry=200.0)
 FLOOD_PATTERNS = LabelPatternsConfig(
     flood_pattern=FLOOD_PATTERN_CFG,
+    connection_flood_pattern=CONNECTION_FLOOD_PATTERN_CFG,
     scan_pattern=ScanPatternConfig(min_unique_dst_ports_per_source=15, max_window_s=30.0),
     slowrate_pattern=SlowratePatternConfig(
         min_connection_duration_s=20.0, max_bytes_per_s=5.0, min_concurrent_connections=5
@@ -342,3 +346,37 @@ def test_flood_pattern_does_not_match_below_min_window():
         make_packet(i, teid=1, timestamp=100.0 + i * 0.01, packet_size=64) for i in range(10)
     ]
     assert _level3_pattern_matches("ICMPflood", packets, FLOOD_PATTERNS) is False
+
+
+def test_connection_flood_pattern_matches_high_port_asymmetry():
+    # SYNflood/Goldeneye signature: one side (source ports) fans out into
+    # the hundreds while the other (destination port) stays fixed -- the
+    # real shape found in outputs/reports/connection_flood_hypothesis/report.md.
+    packets = [
+        make_packet(
+            i, teid=1, timestamp=100.0 + i * 0.01, inner_src_port=2000 + i, inner_dst_port=80
+        )
+        for i in range(250)
+    ]
+    assert _level3_pattern_matches("SYNflood", packets, FLOOD_PATTERNS) is True
+    assert _level3_pattern_matches("Goldeneye", packets, FLOOD_PATTERNS) is True
+
+
+def test_connection_flood_pattern_does_not_match_balanced_port_counts():
+    # Regression test for the bug found in
+    # outputs/reports/evidence_quantification/report.md: SYNflood's true
+    # positives had ZERO entropy/port-concentration pattern matches under
+    # the old shared flood_pattern rule. Ordinary traffic with a handful of
+    # ports on both sides (no asymmetry) must not match either.
+    packets = [
+        make_packet(
+            i,
+            teid=1,
+            timestamp=100.0 + i * 0.1,
+            inner_src_port=51000 + (i % 3),
+            inner_dst_port=80 + (i % 3),
+        )
+        for i in range(20)
+    ]
+    assert _level3_pattern_matches("SYNflood", packets, FLOOD_PATTERNS) is False
+    assert _level3_pattern_matches("Goldeneye", packets, FLOOD_PATTERNS) is False
