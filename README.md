@@ -15,9 +15,17 @@ evaluation methodology. Project conventions for coding agents are in
 
 ## Status
 
-Early scaffolding — pipeline stages are being implemented incrementally
-(parsers → features → agents → ML baselines → evaluation). See task list /
-git history for current progress.
+All planned phases are implemented and results are frozen (no further
+model tuning or threshold recalibration after Phase 7): GTP-U parsing,
+TEID/session feature extraction, multi-level ground-truth labeling,
+agentic detectors, four-arm ML baseline comparison, and the RQ1–4
+evaluation writeup. See [`experiment_plan.md`](experiment_plan.md) for
+findings, limitations, and threats to validity, and
+[`architecture.md`](architecture.md) for what was actually built and run
+(some scripts/config paths differ from the original plan — documented
+there, not glossed over). All Phase 4–7 results are BS1-only; a BS1+BS2
+run was scoped out, not attempted silently — see `experiment_plan.md`'s
+Limitations section.
 
 ## Setup
 
@@ -43,26 +51,50 @@ Place the raw 5G-NIDD captures under `data/raw/BS1/` and `data/raw/BS2/`
 `SYNScan`, `TCPConnect`, `Torshammer`, `UDPflood`, `UDPScan`.
 
 The dataset authors' own processed export (`data/processed/Combined/Combined.csv`,
-`data/processed/Encoded/Encoded.csv`) is used only as the arm-A baseline in
-evaluation (see `experiment_plan.md`) — it is never a pipeline input.
+`data/processed/Encoded/Encoded.csv`) is used only as the arm A1/A2
+baselines in evaluation (see `experiment_plan.md`) — it is never an input
+to the GTP-U/agentic pipeline (arms B/C).
 
 ## Running the pipeline
 
-```bash
-# Fast dev iteration over a small sample of packets/files
-poetry run python scripts/run_sample_pipeline.py
+The original plan called for `scripts/run_sample_pipeline.py`/
+`run_full_pipeline.py` driven by `configs/base.yaml`; in practice the
+labeling investigation and ML baselines were built and run with a
+sequence of purpose-built scripts instead (see `architecture.md`'s
+"Scripts actually used"). To reproduce the committed results
+(`experiment_plan.md`'s Reproducibility section has the full list):
 
-# Full thesis-scale run over all 20 raw pcapng files (~3GB, long-running,
-# checkpointed/resumable — intended to run in the background)
-poetry run python scripts/run_full_pipeline.py
+```bash
+# Labeling ground-truth validation (all 9 BS1 attack types)
+poetry run python scripts/validate_labeling_all.py
+
+# Phase 5 agentic detectors against real labeled data
+poetry run python scripts/validate_agents.py
+
+# Train/evaluate all four ML baseline arms (A1/A2/B/C)
+poetry run python scripts/run_phase6_training.py
+
+# ROC/PR curves, case studies, error analysis, RQ1-4 writeup
+poetry run python scripts/run_phase7_analysis.py
 ```
+
+Each step caches parsed packets under `outputs/cache/packets/`
+(gitignored), so re-runs after the first are fast. `outputs/reports/` and
+`outputs/figures/` (also gitignored) hold the generated reports/plots;
+`experiment_plan.md` inlines every number load-bearing for the reported
+findings so the thesis narrative doesn't depend on those artifacts being
+present.
 
 ## Tests
 
 ```bash
-poetry run pytest            # fast unit suite (excludes @pytest.mark.integration)
-poetry run pytest -m integration   # also exercises one small real pcapng file
+poetry run pytest            # 198 tests, ~93% coverage, no real pcap data needed
 poetry run ruff check .
 poetry run black --check .
 poetry run mypy src
 ```
+
+An `integration` pytest marker and `tests/integration/` package exist for
+a future real-file smoke test but none was written — real-data validation
+happened through the `scripts/` above instead, run directly against the
+raw pcapng files.

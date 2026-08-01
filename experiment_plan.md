@@ -1,11 +1,13 @@
 # Experiment Plan
 
-This document is built incrementally as the project progresses. This first
-section covers the ground-truth labeling methodology and a finding from its
-validation (Phase 4/4C) that materially shapes how the ML baselines (Phase
-6) and evaluation (Phase 7) must be designed. The Research Questions,
-three-arm comparative design, and full evaluation methodology will be added
-in Phase 8 once those phases are implemented.
+This is the thesis-facing methodology and results document. It covers, in
+order: the ground-truth labeling methodology and its Phase 4/4C findings,
+Phase 5B's agent threshold calibration, the four-arm comparative ML
+baseline design (Phase 6), and the Research Questions findings, limitations,
+threats to validity, and reproducibility instructions (Phase 8). All
+results below are **frozen** as of the Phase 7 commit — no further model
+tuning or threshold recalibration was performed after Phase 7 concluded.
+See [`architecture.md`](architecture.md) for code structure.
 
 ## Ground-truth labeling methodology
 
@@ -184,3 +186,255 @@ Full per-type distribution tables and the underlying evidence trail are in
 `outputs/reports/flood_evidence_inspection/`, and
 `outputs/reports/connection_flood_hypothesis/` (gitignored analysis
 artifacts, not part of the committed pipeline).
+
+## Phase 6: four-arm comparative ML baseline design
+
+Extended from the original three-arm plan to four, after inspecting the
+dataset authors' two processed CSVs (see `architecture.md`):
+
+- **A1_combined** (primary official baseline): `data/processed/Combined/Combined.csv`,
+  our own documented preprocessing (readable categorical columns —
+  `Proto`, `sDSb`, `dDSb`, `Cause`, `State` — one-hot encoded before
+  splitting; NaN imputed to a `-1` sentinel).
+- **A2_encoded** (secondary reproducibility check only): `data/processed/Encoded/Encoded.csv`,
+  the authors' own pre-encoded columns used near-verbatim. Demoted from
+  primary-baseline status because many of its one-hot column names are
+  uninterpretable artifacts of the authors' own encoding step (e.g.
+  `" *    V   "`), not citable as specific features.
+- **B_gtp_ml**: RandomForest/XGBoost on the real labeled GTP/TEID/session
+  features (the 9 BS1 attack-type files), TEID-safe split (a
+  `(ue_ip, teid)` group never crosses train/test, computed independently
+  per attack type so no type is entirely held out).
+- **C_agentic**: the existing, *untrained*, Phase-5B-calibrated
+  `TEIDAgent`/`PDUSessionAgent`/`SupervisorAgent` pipeline, evaluated on
+  the identical test sessions arm B was scored on.
+
+**A split-strategy bug found and fixed during Phase 6**: `Combined.csv`/
+`Encoded.csv`'s `Seq` and `RunTime` columns both reset per source capture
+file rather than forming a global timeline (verified empirically — e.g.
+`ICMPFlood`'s `Seq` spans 885–3074 while `Benign`'s spans 1–137210). A
+naive global chronological split by either column interleaves unrelated
+captures and silently drops most attack types from the test set entirely
+(verified: 7 of 9 types vanished from test, leaving it almost pure
+Benign+UDPFlood) — this produced degenerate "predict everything as
+attack" results (recall=1.0 across all of RF/XGBoost/Combined/Encoded)
+before being caught. Fixed with `per_group_chronological_split`: the
+chronological split is computed independently within each `Attack Type`
+group, then concatenated — the same principle already used for arm B/C's
+TEID-safe split.
+
+Arms B and C are evaluated under the two label views defined above:
+**view A** (full schedule-labeled population) and **view B**
+(HIGH/MEDIUM-confidence corroborated only). Arms A1/A2 have no such
+confidence-tier concept (the dataset authors' `Label` column is a flat
+binary) and are reported once.
+
+## Research Questions — findings (Phase 6/7, frozen)
+
+### Primary results table
+
+All numbers below are from `outputs/reports/phase6_training/results.csv`
+(Phase 6) and independently reproduced bit-for-bit by
+`scripts/run_phase7_analysis.py` (10/10 confusion-matrix checks passed).
+
+| Arm | Model | Accuracy | Precision | Recall | F1 | ROC-AUC | FPR |
+|---|---|---|---|---|---|---|---|
+| A1 (Combined, ours) | RandomForest | 0.940 | 0.937 | 0.967 | 0.952 | 0.959 | 0.101 |
+| A1 (Combined, ours) | XGBoost | 0.955 | 0.965 | 0.961 | 0.963 | 0.994 | 0.054 |
+| A2 (Encoded, authors') | RandomForest | 0.940 | 0.936 | 0.967 | 0.951 | 0.959 | 0.102 |
+| A2 (Encoded, authors') | XGBoost | 0.955 | 0.965 | 0.961 | 0.963 | 0.994 | 0.053 |
+| B (GTP-ML), view A | RandomForest | 0.666 | 0.268 | 0.958 | 0.418 | 0.945 | 0.376 |
+| B (GTP-ML), view A | XGBoost | 0.622 | 0.243 | 0.952 | 0.387 | 0.954 | 0.426 |
+| B (GTP-ML), view B | RandomForest | 0.646 | 0.143 | 0.987 | 0.250 | 0.947 | 0.375 |
+| B (GTP-ML), view B | XGBoost | 0.599 | 0.129 | 0.987 | 0.227 | 0.972 | 0.425 |
+| C (Agentic), view A | — | 0.874 | 0.488 | 0.120 | 0.192 | 0.710 | 0.018 |
+| C (Agentic), view B | — | 0.932 | 0.344 | 0.149 | 0.208 | 0.947 | 0.018 |
+
+A1 and A2 agree almost exactly with each other — a sanity check that the
+Combined.csv preprocessing is faithful to the authors' own encoding.
+
+### RQ1 — Can GTP-U/TEID features improve detection over the official flow dataset?
+
+**No, on raw classification metrics, for this dataset as constructed.**
+Arm A reaches F1 ≈ 0.95–0.96; arm B reaches F1 ≈ 0.23–0.42 at the default
+0.5 cutoff. But the ROC-AUC gap is far smaller (0.94–0.99 vs. 0.94–0.97),
+meaning arm B's models discriminate about as well as arm A's once
+ranking is separated from the classification threshold. The gap is best
+read as a data-scale and label-quality confound rather than evidence that
+GTP-U/TEID information itself is uninformative: arm A trains on ~1.2M
+flow records with dozens of mature Argus features; arm B trains on
+~19,500 sessions with 8 simple aggregate features, built from data where
+only ~14.5% of attack labels are independently corroborated (this
+document's own earlier finding).
+
+### RQ2 — Can the agentic architecture match/exceed ML given identical features?
+
+**A genuine precision/recall trade-off, not a clean win or loss.** Arm C
+has dramatically better precision (0.34–0.49 vs. 0.13–0.27) and FPR
+(0.018 vs. 0.38–0.43) than arm B — exactly what Phase 5B's threshold
+calibration was built to achieve — but far worse recall (0.12–0.15 vs.
+0.95–0.99). By ROC-AUC alone, arm C's view-B score (0.947) is competitive
+with arm B's trained models (0.94–0.97): the agent's fused risk score
+ranks attacks about as well, it is simply evaluated at a far more
+conservative fixed decision threshold than the ML models' default 0.5
+cutoff. The threshold-sensitivity plots (`outputs/figures/phase7/`,
+discussion only — no threshold was changed) show how each arm's
+precision/recall would trade off across the full range.
+
+### RQ3 — Does TEID/session-level reasoning improve explainability?
+
+**Qualitatively yes.** The agentic system produces a concrete,
+human-readable, per-decision explanation built from named triggered
+rules and their measured values, e.g.:
+
+> `TEIDAgent: syn_flood (syn_count=2001 (>= 20), ack/syn=0.000 (<= 0.1)); scan (unique_dst_ports=1001 (>= 15), packets_per_port=2.01 (<= 3.0)) | PDUSessionAgent: state=WATCH; high_diversity (port_diversity=1000, destination_diversity=3 (peak 1000 >= 15))`
+
+Classical ML (arms A/B) offers only a model-level, non-per-instance
+explanation (global feature importances) unless a post-hoc method (e.g.
+SHAP) were added, which this project does not implement. This is the
+intended comparison from the original plan — a genuine capability
+difference between the two paradigms, not a gap to "fix" on the ML side.
+Per-attack-type worked examples (one TP/FN/FP each, where present in the
+test split) are in `outputs/reports/phase7_analysis/report.md`.
+
+### RQ4 — Can attacks be detected earlier via TEID/session reasoning?
+
+**Partial answer from available evidence.** Both arm B and arm C have
+sub-millisecond per-sample inference latency once trained/configured, so
+raw wall-clock inference speed is not the differentiator. The qualitative
+distinction is architectural: `PDUSessionAgent`'s state machine
+(NORMAL→WATCH→SUSPICIOUS→ATTACK) produces staged early-warning signal
+across a session's own timeline that a single-shot flow classifier does
+not have by construction — a session can surface as WATCH/SUSPICIOUS
+before ever reaching a final ATTACK verdict. This project does not
+measure time-to-first-flag empirically (would require replaying sessions
+in temporal order and recording when state first elevates, per
+`state_sequence`); left as a concrete follow-up rather than claimed.
+
+### Error analysis (arm C, per attack type, view A)
+
+| Attack type | n | TP | FP | FN | TN | Recall | FPR |
+|---|---|---|---|---|---|---|---|
+| Goldeneye | 621 | 0 | 0 | 0 | 621 | n/a | 0.000 |
+| ICMPflood | 104 | 0 | 0 | 0 | 104 | n/a | 0.000 |
+| SYNScan | 43 | 7 | 0 | 36 | 0 | 0.163 | n/a |
+| SYNflood | 265 | 0 | 5 | 58 | 202 | 0.000 | 0.024 |
+| Slowloris | 207 | 0 | 2 | 0 | 205 | n/a | 0.010 |
+| TCPConnect | 49 | 9 | 0 | 40 | 0 | 0.184 | n/a |
+| Torshammer | 6 | 0 | 5 | 0 | 1 | n/a | 0.833 |
+| UDPScan | 7 | 1 | 0 | 6 | 0 | 0.143 | n/a |
+| UDPflood | 30 | 3 | 9 | 7 | 11 | 0.300 | 0.450 |
+
+The aggregate view-A metrics (accuracy 0.874, FPR 0.018) hide real
+per-type variance: **Torshammer's FPR is 0.833** (5 false alarms out of 6
+test sessions) — the aggregate FPR is low mainly because most attack
+types' test sessions are overwhelmingly benign, not because Torshammer is
+well-handled. **Goldeneye and ICMPflood have zero attack sessions in the
+test split at all** — the TEID-safe grouping happened to place all of
+their few corroborated attack instances entirely in train for this
+particular split.
+
+## Limitations
+
+- **BS1 only.** All Phase 4–7 results (labeling validation, agent
+  calibration, ML baselines, RQ1–4 findings) use `data/raw/BS1/*.pcapng`
+  exclusively. `data/raw/BS2/*.pcapng` was used only for the Phase 4C
+  connection-oriented-flood hypothesis validation (to confirm
+  port-cardinality asymmetry generalizes across base stations), never for
+  Phase 6/7 training or evaluation. A full BS1+BS2 run was explicitly
+  deferred, not attempted and hidden.
+- **Small, noisy training data for arms B/C.** ~19,500 GTP sessions built
+  from ~14.5%-corroborated labels, vs. arm A's ~1.2M mature flow records —
+  the arm A vs. B comparison (RQ1) is confounded by this scale/quality
+  gap, as discussed above.
+- **Arm A1/A2 vs. B/C are not the same unit of analysis.** A1/A2 predict
+  per-flow (Argus biflow record); B/C predict per-session (fixed
+  5s/30s window) or per-TEID-instance. Metrics are reported per arm, not
+  forced into a single shared confusion matrix.
+- **Fixed decision thresholds, not threshold-matched.** RQ2's B-vs-C
+  comparison uses each arm's own default operating point (ML: 0.5
+  probability cutoff; agentic: Phase-5B-calibrated
+  `attack_decision_threshold`), not a threshold-matched comparison (e.g.
+  both arms compared at equal FPR). The threshold-sensitivity plots
+  partially address this but a formal iso-FPR comparison was not built.
+- **The `low_temporal_entropy` inverted-relationship finding is
+  unexplained**, not just unfixed — the hypothesis offered (uniform
+  floods vs. bursty background traffic) was not independently verified
+  against packet-level evidence the way the connection-oriented-flood
+  finding was.
+- **RQ4 is answered qualitatively only** — no time-to-first-flag
+  measurement was implemented.
+- **The scan-type attack labeling limitation is structural, not fixed**:
+  per `preprocessing/labeling.py`'s own documented KNOWN LIMITATION, Table
+  III of the descriptor paper gives SYNScan/TCPConnect/UDPScan no
+  separate collection-period window distinct from the attack window, so
+  Level 1 fires for effectively the entire file and confidence tier (not
+  the binary label) carries the real signal for these three types.
+- **`Settings`/`configs/base.yaml` exists but was not the actual driver**
+  of the scripts that produced these results — see `architecture.md`'s
+  "Scripts actually used" section. A reader trying to reproduce results
+  via `Settings`/`base.yaml`-driven CLI commands (as the original plan
+  described) would not find one; the actual reproduction path is the
+  specific `scripts/*.py` files documented below.
+
+## Threats to validity
+
+- **Internal validity**: ground-truth labels are schedule/victim-IP/
+  pattern-derived, not independently hand-verified per instance beyond
+  the case studies and validation reports produced during Phase 4. The
+  ~14.5% HIGH+MEDIUM corroboration rate means most of the training signal
+  for arms B/C (in view A) is LOW-confidence, i.e. plausibly mislabeled
+  concurrent benign traffic per the descriptor paper's own caveat.
+- **Construct validity**: "detection" is operationalized differently per
+  arm (per-flow vs. per-session vs. per-TEID-instance), and the agentic
+  system's PDU-session state machine only sees the test-period portion of
+  each session sequence during evaluation (`evaluate_arm_c`'s docstring),
+  not the full pre-split history — a session scored in isolation from its
+  training-period predecessors may reach a different `final_state` than
+  it would in a live, continuously-running deployment.
+- **External validity**: findings are specific to the 5G-NIDD dataset's
+  attack tools/traffic mix and to BS1. Generalization to other 5G
+  deployments, other attack tools, or BS2 is not established by this
+  work.
+- **Statistical power for the connection-oriented-flood threshold**: the
+  `min_port_cardinality_asymmetry=200.0` calibration is based on only 9
+  victim-IP-corroborated instances total (5 SYNflood + 4 Goldeneye,
+  BS1+BS2 combined) — the zero-overlap separation is compelling given the
+  order-of-magnitude gap, but the sample is small.
+- **Non-adversarial evaluation**: all attack traffic is the original
+  5G-NIDD capture; no adaptive or evasion-aware adversary was simulated
+  against either the agentic rules or the trained ML models.
+
+## Reproducibility
+
+- **Environment**: Python 3.11, Poetry (`poetry install`). All seeds
+  fixed to 42 (`ml/dataset.py::SEED`, propagated to `RandomForestModel`/
+  `XGBoostModel`/`per_group_chronological_split`).
+- **Data**: place `data/raw/BS1/*.pcapng` and
+  `data/processed/{Combined,Encoded}/*.csv` as described in `README.md`
+  (not committed to git). BS2 is only needed to reproduce the Phase 4C
+  connection-flood hypothesis validation, not Phase 6/7.
+- **Config**: `configs/thresholds.yaml`, `configs/label_patterns.yaml`,
+  `configs/attack_schedule.yaml` are committed and are the exact frozen
+  values behind every number in this document.
+- **Reproduction path** (each step's outputs are cached under
+  `outputs/cache/packets/`, gitignored, so re-runs after the first are
+  fast):
+  1. `poetry run python scripts/validate_labeling_all.py` — labeling
+     validation report for all 9 BS1 types.
+  2. `poetry run python scripts/validate_agents.py` — Phase 5 agent
+     validation against real data.
+  3. `poetry run python scripts/run_phase6_training.py` — trains/
+     evaluates all four arms, writes
+     `outputs/reports/phase6_training/results.csv`.
+  4. `poetry run python scripts/run_phase7_analysis.py` — regenerates
+     ROC/PR curves, case studies, and the RQ writeup; independently
+     re-derives every Phase 6 confusion matrix and asserts it matches
+     bit-for-bit (10/10 passed as of this writing).
+- **Tests**: `poetry run pytest` (198 tests, ~93% coverage, no real pcap
+  data required — all synthetic/hand-built fixtures).
+- **What is NOT reproducible from git alone**: `outputs/**` (reports,
+  figures, cache) is gitignored by design (regenerable, and some report
+  directories are large). This document inlines every number load-bearing
+  for the RQ1–4 findings so the thesis narrative does not depend on those
+  artifacts being present.
