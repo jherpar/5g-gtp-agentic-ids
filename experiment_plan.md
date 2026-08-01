@@ -299,17 +299,121 @@ test split) are in `outputs/reports/phase7_analysis/report.md`.
 
 ### RQ4 — Can attacks be detected earlier via TEID/session reasoning?
 
-**Partial answer from available evidence.** Both arm B and arm C have
+**Partial answer from available evidence, now including an empirical
+time-to-first-flag measurement (below).** Both arm B and arm C have
 sub-millisecond per-sample inference latency once trained/configured, so
 raw wall-clock inference speed is not the differentiator. The qualitative
 distinction is architectural: `PDUSessionAgent`'s state machine
 (NORMAL→WATCH→SUSPICIOUS→ATTACK) produces staged early-warning signal
 across a session's own timeline that a single-shot flow classifier does
 not have by construction — a session can surface as WATCH/SUSPICIOUS
-before ever reaching a final ATTACK verdict. This project does not
-measure time-to-first-flag empirically (would require replaying sessions
-in temporal order and recording when state first elevates, per
-`state_sequence`); left as a concrete follow-up rather than claimed.
+before ever reaching a final ATTACK verdict. This staged-signal
+*capability* is real (the state machine architecturally can flag before a
+final verdict), but the follow-up measurement below tests whether it
+actually happens *earlier in wall-clock time* than a traditional
+classifier's first positive — and finds, on the primary comparison, that
+it typically does not.
+
+#### RQ4 follow-up: detection-latency measurement study
+
+A pure measurement addendum (`scripts/analyze_rq4_detection_latency.py`),
+run after Phase 7 with the experimental configuration completely frozen —
+no model retrained, no threshold/rule/label/split/config changed. Two
+things were of necessity *re-derived* rather than reused as saved
+artifacts, both exactly reproducing what Phase 6 already did (not new
+training in any sense that could change a result): the arm-B XGBoost fit
+(no model was persisted to disk after Phase 6/7; same hyperparameters,
+same seed, same `build_gtp_session_dataset` train split) and "attack
+start," taken directly from the existing Level 1 ground truth
+(`preprocessing.labeling._approximate_attack_subwindow`, the same
+function `_classify()` already uses internally) rather than any new
+definition.
+
+**Unit of measurement**: per `(ue_ip, teid)` conversation group with at
+least one attack-labeled session, not per file — one file has exactly one
+`attack_start` but typically many independent groups, which is what makes
+a per-attack-type mean/median/min/max distribution meaningful without
+requiring new (BS2 or otherwise) data. `PDUSessionAgent.annotate_series`
+ran over each group's full chronological session history for that file
+(no train/test split applies to a rule-based, never-trained agent — no
+leakage concern). The ML model was scored the same way, over the same
+full chronological sequence, which for most attack types means **some
+scored sessions were part of the model's own training set** — an
+explicit, load-bearing limitation, not a footnote (see below). A
+stricter, leakage-free "test-split-only" measurement is also reported
+but is only defined for 14 of 122 groups (most attack types have zero
+attack-labeled groups in the held-out test split at all, the same finding
+already reported in the Error Analysis section above for Goldeneye/
+ICMPflood).
+
+**Overall summary (pooled across all 9 BS1 attack types, 122
+attack-labeled conversation groups):**
+
+| Metric | n | mean | median | min | max |
+|---|---|---|---|---|---|
+| Time to first WATCH (s, relative to attack_start) | 49 | 232.4 | 77.3 | -293.0 | 1462.3 |
+| Time to first SUSPICIOUS (s) | 14 | 117.0 | 94.7 | -71.6 | 365.0 |
+| Time to first ATTACK (s) | 12 | 181.5 | 189.4 | 7.3 | 375.0 |
+| Time to first ML detection, full timeline (s) | 116 | -66.7 | 2.3 | -315.1 | 512.4 |
+| Time to first ML detection, test-split only (s) | 14 | 157.2 | 68.1 | 17.4 | 478.9 |
+| Detection lead time: ML − WATCH (s) | 49 | -307.9 | -60.0 | -1675.0 | 280.0 |
+| Detection lead time: ML − SUSPICIOUS (s) | 14 | -108.2 | -22.5 | -525.0 | 0.0 |
+| Detection lead time: ML − ATTACK (s) | 12 | -132.1 | -102.5 | -365.0 | -5.0 |
+
+(Positive lead time = agent event happened before ML's first detection,
+i.e. agent earlier; negative = ML detected first. Full per-attack-type
+tables — all 9 types individually — are in
+`outputs/reports/rq4_detection_latency/report.md`.)
+
+**The result is negative on the primary comparison, and is reported as
+such.** Median lead time is negative for all three agent milestones
+(WATCH: -60.0s, SUSPICIOUS: -22.5s, ATTACK: -102.5s) — under this
+measurement, the ML classifier's first positive prediction typically
+precedes even the agent's *earliest* escalation state (WATCH), let alone
+SUSPICIOUS or ATTACK. This directly contradicts the capability argument's
+implicit assumption that staged escalation would also mean *earlier*
+detection in wall-clock time. A plausible architectural explanation:
+`PDUSessionAgent`'s state machine is deliberately rate-limited to escalate
+at most one level per observed window (`pdu_session_agent.py`, to avoid a
+single noisy window jumping straight to ATTACK) — that rate limit is a
+real, intentional design choice for stability, but it mechanically costs
+wall-clock time relative to a classifier that can flag "positive" on the
+very first window whose features cross its threshold. This is offered as
+an interpretation of *why*, not an excuse for the negative result.
+
+The effect is not universal: individual conversation groups do show the
+agent flagging before ML (e.g. UDPflood's WATCH-vs-ML lead time reaches
++280.0s at the max, Goldeneye +205.0s, ICMPflood +15.0s), so a minority of
+cases and attack types benefit from earlier agent escalation — but this is
+not the typical/median pattern across BS1's 9 attack types, and is not
+represented as one.
+
+**A specific, load-bearing limitation on this finding**: the "full
+timeline" ML measurement is optimistic for ML (potential training-set
+leakage for most attack types), which means the true gap could be
+narrower — but it cannot make the reported negative result an artifact of
+unfairness *against* the agent, since the leakage only advantages ML.
+The leakage-free "test-split-only" comparison exists for too few groups
+(14/122) to support an independent lead-time conclusion on its own; it is
+reported (median 68.1s after attack_start) for transparency, not
+interpreted further.
+
+Three representative timeline figures (one flood — ICMPflood, one scan —
+SYNScan, one slow-rate — Slowloris; each picks the attack-labeled group
+with the most complete state trajectory, or the first available group if
+none reached ATTACK) are in
+`outputs/figures/rq4_detection_latency/timeline_{flood,scan,slow-rate}_*.png`,
+plotting the agent's state over time against attack_start and ML's first
+detection.
+
+**Conclusion**: the data does not support the hypothesis that the
+agentic architecture provides earlier warning in wall-clock time via its
+WATCH/SUSPICIOUS states, in the typical/median case, across BS1's 9
+attack types — the opposite pattern is what was measured, and is reported
+without softening. The architectural capability for staged early warning
+before a final verdict is real (RQ4's qualitative point stands), but
+capability and demonstrated earliness are not the same claim, and only
+the former is supported by this project's evidence.
 
 ### Error analysis (arm C, per attack type, view A)
 
@@ -362,8 +466,13 @@ particular split.
   floods vs. bursty background traffic) was not independently verified
   against packet-level evidence the way the connection-oriented-flood
   finding was.
-- **RQ4 is answered qualitatively only** — no time-to-first-flag
-  measurement was implemented.
+- **RQ4's detection-latency measurement uses a leakage-prone ML timeline**
+  for most attack types (the re-derived arm-B model scored some sessions
+  it was fit on, since a leakage-free measurement is only defined for
+  14/122 conversation groups) — see the RQ4 follow-up subsection for the
+  full caveat. Time-to-first-flag is measured per conversation group, not
+  independently replicated across base stations (BS1 only, same scope as
+  the rest of this document).
 - **The scan-type attack labeling limitation is structural, not fixed**:
   per `preprocessing/labeling.py`'s own documented KNOWN LIMITATION, Table
   III of the descriptor paper gives SYNScan/TCPConnect/UDPScan no
@@ -431,6 +540,9 @@ particular split.
      ROC/PR curves, case studies, and the RQ writeup; independently
      re-derives every Phase 6 confusion matrix and asserts it matches
      bit-for-bit (10/10 passed as of this writing).
+  5. `poetry run python scripts/analyze_rq4_detection_latency.py` — the
+     RQ4 detection-latency measurement study (post-Phase-7 addendum, pure
+     measurement, no configuration changed).
 - **Tests**: `poetry run pytest` (198 tests, ~93% coverage, no real pcap
   data required — all synthetic/hand-built fixtures).
 - **What is NOT reproducible from git alone**: `outputs/**` (reports,
