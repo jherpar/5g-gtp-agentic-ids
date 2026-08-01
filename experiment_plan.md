@@ -297,6 +297,18 @@ difference between the two paradigms, not a gap to "fix" on the ML side.
 Per-attack-type worked examples (one TP/FN/FP each, where present in the
 test split) are in `outputs/reports/phase7_analysis/report.md`.
 
+**Note on the optional LLM explanation component**: `agents/explain.py`
+(a local-Ollama client for post-hoc natural-language prose, layered on
+top of the string quoted above) was implemented and unit-tested but
+**never activated** — `llm.enabled` stayed `false` throughout, and no
+script in this project ever calls it. The explanation text behind this
+RQ3 finding, and every case study in this document, is 100% the
+deterministic rule-based string, not LLM-generated. This was the intended
+design (LLM use was always meant to be optional and disabled by default
+for reproducibility), not an oversight, but it means RQ3's "human-readable
+explanation" claim should be read as about the rule-based `reason`/
+`rule_triggers` output specifically.
+
 ### RQ4 — Can attacks be detected earlier via TEID/session reasoning?
 
 **Partial answer from available evidence, now including an empirical

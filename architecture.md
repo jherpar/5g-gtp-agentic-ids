@@ -89,7 +89,14 @@ given the same features and `configs/thresholds.yaml`):
   `fusion_weights`), producing the final Attack/Benign label.
 - `explain.py` — optional local-Ollama HTTP client for post-hoc natural-
   language explanation text only; disabled by default, never feeds back
-  into any score, JSON-lines cached.
+  into any score, JSON-lines cached. Implemented and unit-tested (5 tests,
+  mocked HTTP) but **never activated**: `configs/base.yaml`'s
+  `llm.enabled` stayed `false` throughout, `SupervisorAgent.fuse()` always
+  sets `llm_explanation=None`, and no script in this repo calls
+  `generate_explanation()`. Every explanation used in the reported results
+  (RQ3's case studies, `experiment_plan.md`) is the deterministic
+  rule-based `SupervisorDecision.explanation` string, not LLM-generated
+  text.
 
 ## ML baselines (`src/agente_5g/ml/`) — arms A1/A2/B
 
