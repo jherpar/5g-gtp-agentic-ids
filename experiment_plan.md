@@ -142,6 +142,41 @@ evaluate all three arms (official baseline / GTP-ML / agentic) against (B)
 as the higher-trust test set while reporting (A)-based metrics separately;
 or use (C) directly as per-sample confidence weights in training.
 
+## Phase 5B: agent threshold calibration and the inverted temporal-entropy finding
+
+Phase 5's agents (`TEIDAgent`/`PDUSessionAgent`/`SupervisorAgent`) were unit-
+tested only against synthetic data; `scripts/validate_agents.py` ran them
+against the real labeled BS1 dataset for the first time and found high
+false-positive rates on HIGH-confidence (trustworthy) benign traffic for
+the DoS-type attacks (44-73% FPR), driven mainly by `PDUSessionAgent`'s
+`high_state_transition` and `low_temporal_entropy` rules.
+`scripts/calibrate_agent_thresholds.py` computed real distribution
+statistics (p50/p75/p90/p95/p99), pooled across all 9 attack types, split
+by HIGH-confidence-benign / HIGH-confidence-attack / MEDIUM-confidence-
+attack, to recalibrate them (`outputs/reports/agent_threshold_calibration/`).
+
+`high_state_transition_rate` separated cleanly in its assumed direction
+(benign p99 = 11.47, attack median = 106.8) and was recalibrated from 0.5
+to 15.0.
+
+`low_temporal_entropy` did not: the real data shows attack sessions have
+**higher** temporal entropy than benign ones (attack median = 2.69 vs.
+benign median = 0.50) — the opposite of the rule's "low entropy = bursty,
+flood-like" assumption. This is not a threshold-value problem; no cutoff
+can fix a reversed relationship without flipping the rule's `<=` comparison
+to `>=`, which is a logic change outside Phase 5B's scope (calibrate
+existing thresholds, not redesign rules). The rule was neutralized
+(threshold set below the valid range of Shannon entropy, so it
+mathematically cannot trigger) rather than left at a value that would
+still generate false positives. **The inverted relationship itself is
+carried forward as an open research question, not treated as solved** —
+plausibly floods sustained across a full window arrive uniformly (spreading
+packets evenly across the window's time sub-bins, i.e. high entropy) while
+ordinary app traffic is bursty/request-response shaped (concentrated in a
+few sub-bins, i.e. low entropy) for this dataset, but this has not been
+independently verified and the rule should not be re-enabled without doing
+so.
+
 Full per-type distribution tables and the underlying evidence trail are in
 `outputs/reports/labeling_validation_all/`,
 `outputs/reports/confidence_diagnosis/`,

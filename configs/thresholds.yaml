@@ -37,8 +37,25 @@ pdu_session_agent:
     watch_max: 0.5
     suspicious_max: 0.75
     # >= suspicious_max -> ATTACK
-  high_state_transition_rate: 0.5
-  low_temporal_entropy: 0.5
+  # Phase 5B calibration (scripts/calibrate_agent_thresholds.py,
+  # outputs/reports/agent_threshold_calibration/report.md), pooled across
+  # all 9 real BS1 attack types, HIGH-confidence-benign vs. HIGH/MEDIUM-
+  # confidence-attack: state_transition_rate separates cleanly (benign
+  # p99=11.47 vs. attack median=106.8), so 15.0 sits comfortably above the
+  # benign p99 with a wide margin below the attack distribution.
+  high_state_transition_rate: 15.0
+  # NEUTRALIZED, not recalibrated: the real data shows attack traffic has
+  # HIGHER temporal entropy than benign (attack median=2.69 vs. benign
+  # median=0.50) -- the exact opposite of this rule's "low entropy =
+  # bursty/suspicious" assumption. No threshold VALUE can fix a reversed
+  # relationship without flipping the rule's `<=` comparison to `>=`, which
+  # is a logic change, not a calibration change, and is out of scope for
+  # Phase 5B. Set below the valid range of Shannon entropy (>= 0) so the
+  # rule mathematically can never trigger, removing its false-positive
+  # contribution without altering agents/rules.py. The inverted
+  # relationship itself is a real finding -- see experiment_plan.md -- left
+  # for future investigation, not treated as solved.
+  low_temporal_entropy: -1.0
   high_diversity: 15
 
 supervisor_agent:
