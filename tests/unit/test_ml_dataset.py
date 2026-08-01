@@ -7,6 +7,7 @@ from agente_5g.ml.dataset import (
     build_gtp_session_dataset,
     chronological_split,
     load_combined_csv,
+    per_group_chronological_split,
     to_arm_a_matrix,
     to_gtp_matrix,
 )
@@ -55,6 +56,42 @@ def test_chronological_split_is_ordered_not_shuffled():
 
     assert train["Seq"].tolist() == [1, 2, 3]
     assert test["Seq"].tolist() == [4, 5]
+
+
+def test_global_chronological_split_drops_groups_with_a_per_group_counter():
+    # Regression test documenting the real bug found running Phase 6 on
+    # Combined.csv: Seq resets per source capture file, so a naive global
+    # sort interleaves unrelated captures. A group whose Seq range is much
+    # smaller than another group's concentrates entirely in the low-Seq
+    # (train) portion and vanishes from the high-Seq (test) tail -- not
+    # because it's chronologically earlier in any meaningful sense, but
+    # purely because its capture was shorter.
+    group_a = pd.DataFrame({"Seq": range(1, 101), "group": "A"})  # Seq 1..100
+    group_b = pd.DataFrame({"Seq": range(1, 11), "group": "B"})  # Seq 1..10 only
+    df = pd.concat([group_a, group_b], ignore_index=True)
+
+    train, test = chronological_split(df, order_column="Seq", test_fraction=0.3)
+
+    assert set(test["group"]) == {"A"}  # group B entirely absent from test
+
+
+def test_per_group_chronological_split_keeps_every_group_in_both_sides():
+    df = pd.DataFrame(
+        {
+            "Seq": [1, 2, 3, 4, 5, 1, 2, 3],
+            "group": ["A", "A", "A", "A", "A", "B", "B", "B"],
+        }
+    )
+
+    train, test = per_group_chronological_split(
+        df, group_column="group", order_column="Seq", test_fraction=0.4
+    )
+
+    assert set(train["group"]) == {"A", "B"}
+    assert set(test["group"]) == {"A", "B"}
+    # each group's own chronologically-later rows land in test
+    assert test.loc[test["group"] == "A", "Seq"].tolist() == [4, 5]
+    assert test.loc[test["group"] == "B", "Seq"].tolist() == [2, 3]
 
 
 def test_build_gtp_session_dataset_never_splits_a_teid_group():

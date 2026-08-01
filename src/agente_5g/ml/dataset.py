@@ -99,10 +99,42 @@ def chronological_split(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Sort by `order_column` (ascending) and split so the test set is the
     chronologically LATER fraction -- never a random shuffle, since that
-    would leak future traffic patterns into training."""
+    would leak future traffic patterns into training.
+
+    Only valid when `order_column` is a genuine GLOBAL ordering across the
+    whole frame. `Seq`/`RunTime` in Combined.csv/Encoded.csv are NOT --
+    both reset to 0/1 independently for every source capture file, so a
+    naive global sort by either interleaves unrelated captures and produces
+    a severely distorted split (verified: it drops 7 of 9 attack types
+    entirely from the test set). Use
+    `per_group_chronological_split(df, group_column="Attack Type", ...)`
+    for this dataset instead."""
     ordered = df.sort_values(order_column)
     split_idx = int(len(ordered) * (1 - test_fraction))
     return ordered.iloc[:split_idx], ordered.iloc[split_idx:]
+
+
+def per_group_chronological_split(
+    df: pd.DataFrame,
+    group_column: str,
+    order_column: str,
+    test_fraction: float = DEFAULT_TEST_FRACTION,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Chronological split computed INDEPENDENTLY within each value of
+    `group_column`, then concatenated -- the correct split for
+    Combined.csv/Encoded.csv, where `Seq`/`RunTime` are per-capture-file
+    counters, not a global timeline (see `chronological_split`'s
+    docstring). Every group contributes its own chronologically-later
+    fraction to the test set, so no attack type is silently dropped from
+    either side, mirroring `build_gtp_session_dataset`'s per-attack-type
+    split for arm B/C."""
+    train_parts = []
+    test_parts = []
+    for _, group_df in df.groupby(group_column, sort=False):
+        train_part, test_part = chronological_split(group_df, order_column, test_fraction)
+        train_parts.append(train_part)
+        test_parts.append(test_part)
+    return pd.concat(train_parts, ignore_index=True), pd.concat(test_parts, ignore_index=True)
 
 
 def build_gtp_session_dataset(

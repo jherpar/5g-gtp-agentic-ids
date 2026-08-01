@@ -46,10 +46,21 @@ def _arm_a_frame(n_benign: int, n_attack: int) -> pd.DataFrame:
     rows = []
     seq = 1
     for _ in range(n_benign):
-        rows.append({"Seq": seq, "feat1": 1.0, "feat2": 5.0, "is_attack": False})
+        rows.append(
+            {"Seq": seq, "Attack Type": "Benign", "feat1": 1.0, "feat2": 5.0, "is_attack": False}
+        )
         seq += 1
+    seq = 1
     for _ in range(n_attack):
-        rows.append({"Seq": seq, "feat1": 100.0, "feat2": 5.0, "is_attack": True})
+        rows.append(
+            {
+                "Seq": seq,
+                "Attack Type": "TestAttack",
+                "feat1": 100.0,
+                "feat2": 5.0,
+                "is_attack": True,
+            }
+        )
         seq += 1
     return pd.DataFrame(rows)
 

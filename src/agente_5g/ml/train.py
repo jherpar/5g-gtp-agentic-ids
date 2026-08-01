@@ -29,7 +29,7 @@ from agente_5g.evaluation.metrics import compute_metrics
 from agente_5g.ml.dataset import (
     DEFAULT_TEST_FRACTION,
     SEED,
-    chronological_split,
+    per_group_chronological_split,
     to_arm_a_matrix,
     to_gtp_matrix,
 )
@@ -76,14 +76,18 @@ def _make_result(
 def train_and_evaluate_arm_a(
     df: pd.DataFrame,
     arm: ArmA,
-    split_column: str = "Seq",
+    group_column: str = "Attack Type",
+    order_column: str = "Seq",
     test_fraction: float = DEFAULT_TEST_FRACTION,
 ) -> list[EvaluationResult]:
-    """Chronological split (no session/TEID identifiers exist in this data,
-    see `experiment_plan.md`'s split-strategy note), train RF + XGBoost,
-    evaluate once (arms A1/A2 have no confidence-tier concept)."""
-    train_df, test_df = chronological_split(
-        df, order_column=split_column, test_fraction=test_fraction
+    """Per-attack-type chronological split (no GLOBAL session/TEID/timestamp
+    identifier exists in this data -- `Seq`/`RunTime` both reset per source
+    capture file, verified empirically; a naive global sort by either drops
+    most attack types from the test set entirely, see
+    `dataset.chronological_split`'s docstring), train RF + XGBoost, evaluate
+    once (arms A1/A2 have no confidence-tier concept)."""
+    train_df, test_df = per_group_chronological_split(
+        df, group_column=group_column, order_column=order_column, test_fraction=test_fraction
     )
     x_train, y_train = to_arm_a_matrix(train_df)
     x_test, y_test = to_arm_a_matrix(test_df)
