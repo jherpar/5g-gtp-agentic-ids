@@ -13,10 +13,10 @@ from agente_5g.ml.dataset import (
 from agente_5g.models.labels import LabelConfidence
 from tests.fixtures.feature_records import make_session
 
-COMBINED_CSV_ROWS = """,Seq,Dur,Proto,sTos,dTos,sDSb,dDSb,Cause,State,TotPkts,Label,Attack Type,Attack Tool
-0,1,0.1,udp,0.0,,cs0,,Start,CON,5,Benign,Benign,Benign
-1,2,0.2,tcp,0.0,0.0,cs0,cs0,Start,FIN,10,Malicious,SYNFlood,hping3
-2,3,0.3,icmp,,,,,Status,ECO,3,Benign,Benign,Benign
+COMBINED_CSV_ROWS = """,Seq,Dur,Proto,sTos,dTos,sDSb,dDSb,Cause,State,Label,Attack Type,Attack Tool
+0,1,0.1,udp,0.0,,cs0,,Start,CON,Benign,Benign,Benign
+1,2,0.2,tcp,0.0,0.0,cs0,cs0,Start,FIN,Malicious,SYNFlood,hping3
+2,3,0.3,icmp,,,,,Status,ECO,Benign,Benign,Benign
 """
 
 
@@ -59,8 +59,9 @@ def test_chronological_split_is_ordered_not_shuffled():
 
 def test_build_gtp_session_dataset_never_splits_a_teid_group():
     sessions = [
-        make_session(f"s{i}", teid=1, start_time=float(i * 5), end_time=float(i * 5 + 5))
-        .model_copy(update={"is_attack": True, "label_confidence": LabelConfidence.HIGH})
+        make_session(
+            f"s{i}", teid=1, start_time=float(i * 5), end_time=float(i * 5 + 5)
+        ).model_copy(update={"is_attack": True, "label_confidence": LabelConfidence.HIGH})
         for i in range(10)
     ]
 
@@ -75,13 +76,15 @@ def test_build_gtp_session_dataset_never_splits_a_teid_group():
 
 def test_build_gtp_session_dataset_splits_by_group_chronologically():
     early_group = [
-        make_session(f"early-{i}", teid=1, start_time=float(i), end_time=float(i + 1))
-        .model_copy(update={"is_attack": False, "label_confidence": LabelConfidence.HIGH})
+        make_session(f"early-{i}", teid=1, start_time=float(i), end_time=float(i + 1)).model_copy(
+            update={"is_attack": False, "label_confidence": LabelConfidence.HIGH}
+        )
         for i in range(3)
     ]
     late_group = [
-        make_session(f"late-{i}", teid=2, start_time=float(1000 + i), end_time=float(1001 + i))
-        .model_copy(update={"is_attack": True, "label_confidence": LabelConfidence.HIGH})
+        make_session(
+            f"late-{i}", teid=2, start_time=float(1000 + i), end_time=float(1001 + i)
+        ).model_copy(update={"is_attack": True, "label_confidence": LabelConfidence.HIGH})
         for i in range(3)
     ]
 
