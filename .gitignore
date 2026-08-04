@@ -1,5 +1,6 @@
 # Data (large binaries, never committed)
 data/raw/**/*.pcapng
+data/raw/**/*.csv
 data/processed/**/*.csv
 data/features/**
 !data/features/.gitkeep
