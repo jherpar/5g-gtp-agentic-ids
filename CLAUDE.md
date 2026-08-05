@@ -14,8 +14,8 @@ Architecture:
 4. Supervisor Agent
 5. ML Baseline
 
-See `architecture.md` for the actual module layout and `experiment_plan.md`
-for methodology/results. Key conventions, not obvious from the code alone:
+See `docs/architecture.md` for the actual module layout and
+`docs/experiment_plan.md` for methodology/results. Key conventions, not obvious from the code alone:
 
 - Scapy is the primary parser backend (streaming `PcapReader`, never
   `rdpcap`); PyShark is optional, only auto-selected if `tshark` is on
@@ -33,7 +33,7 @@ for methodology/results. Key conventions, not obvious from the code alone:
   detector.
 - Ground-truth labels carry an explicit HIGH/MEDIUM/LOW confidence tier
   (`label_confidence`/`label_evidence` fields), not a single binary label
-  — see `experiment_plan.md`'s labeling-methodology section for why, and
+  — see `docs/experiment_plan.md`'s labeling-methodology section for why, and
   its "three preserved label views" policy that downstream code must
   respect.
 - Evaluation compares four arms, not a single model: A1 (official
@@ -52,12 +52,12 @@ for methodology/results. Key conventions, not obvious from the code alone:
   `reason`/`rule_triggers` output vs. ML feature-importance output, see
   `evaluation/case_studies.py`)*
 - **RQ4**: Can attacks be detected earlier by TEID/session reasoning than
-  by traditional flow-based ML methods? *(qualitative — `PDUSessionAgent`'s
-  state-transition timestamps as an early-warning signal vs. single-shot
-  flow classification; no empirical time-to-first-flag measurement was
-  implemented)*
+  by traditional flow-based ML methods? *(arm B vs. arm C first-detection
+  timestamp, measured empirically in a post-Phase-7 follow-up study —
+  result is negative on the primary comparison: ML typically detects
+  first. See `docs/experiment_plan.md`'s "RQ4 follow-up" subsection.)*
 
-Findings for all four are in `experiment_plan.md`'s "Research Questions —
+Findings for all four are in `docs/experiment_plan.md`'s "Research Questions —
 findings" section, frozen as of the Phase 7 commit.
 
 Coding Standards
@@ -86,7 +86,7 @@ Inputs:
 2 base stations = 20 files (~3GB total): `Goldeneye`, `ICMPflood`,
 `Slowloris`, `SSH` (benign-only, not an attack), `SYNflood`, `SYNScan`,
 `TCPConnect`, `Torshammer`, `UDPflood`, `UDPScan`. Reported results
-(Phase 4–7) use BS1 only — see `experiment_plan.md`'s Limitations.
+(Phase 4–7) use BS1 only — see `docs/experiment_plan.md`'s Limitations.
 
 Also `data/processed/{Combined,Encoded}/*.csv` (the dataset authors' own
 processed export, used only for arm A1/A2, never for the GTP-U pipeline).

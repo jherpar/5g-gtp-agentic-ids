@@ -7,8 +7,11 @@ data/features/**
 .DS_Store
 **/.DS_Store
 
-# Reference PDFs (large binaries, not source; kept locally)
+# Reference PDFs (large binaries, not source; kept locally). Exception:
+# the thesis document and defense slides ARE meant to be published, once
+# added, under docs/ -- see docs/README.md.
 *.pdf
+!docs/*.pdf
 
 # Outputs
 outputs/figures/**

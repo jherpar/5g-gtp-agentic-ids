@@ -1,0 +1,49 @@
+cff-version: 1.2.0
+message: "If you use this software or its methodology, please cite it as below."
+title: "5G-GTP Agentic IDS: An Agentic Intrusion Detection Architecture for the 5G User Plane"
+type: software
+authors:
+  - family-names: "Hernández"
+    given-names: "Justo"
+    email: justo.hernandez@edu.upct.es
+    affiliation: "Universidad Politécnica de Cartagena (UPCT)"
+repository-code: "https://github.com/<github-username>/5g-gtp-agentic-ids-tfm"
+abstract: >
+  Master's Thesis (TFM) research codebase comparing a rule-based agentic
+  detection architecture (TEID Agent -> PDU Session Agent -> Supervisor
+  Agent) against classical ML (RandomForest, XGBoost) for intrusion
+  detection on the 5G-NIDD dataset, built directly from raw GTP-U pcapng
+  captures rather than the dataset authors' GTP-stripped Argus/CSV export.
+keywords:
+  - intrusion-detection
+  - 5g-security
+  - gtp-u
+  - agentic-ai
+  - network-security
+  - machine-learning
+  - 5g-nidd
+license: MIT
+version: 1.0.0
+date-released: "2026-08-04"
+preferred-citation:
+  type: thesis
+  title: "5G-GTP Agentic IDS: An Agentic Intrusion Detection Architecture for the 5G User Plane"
+  authors:
+    - family-names: "Hernández"
+      given-names: "Justo"
+      affiliation: "Universidad Politécnica de Cartagena (UPCT)"
+  institution:
+    name: "Universidad Politécnica de Cartagena (UPCT)"
+  thesis-type: "Master's Thesis (TFM)"
+  year: 2026
+references:
+  - type: dataset
+    title: "5G-NIDD: A Comprehensive Network Intrusion Detection Dataset Generated over 5G Wireless Network"
+    url: "https://ieee-dataport.org/10203"
+    notes: >
+      The underlying dataset used by this project. Not redistributed in
+      this repository; see data/dataset_instructions.md for how to obtain
+      it under the original authors' own terms. Cite the dataset
+      separately using the author list and citation format given on its
+      IEEE DataPort listing (not reproduced here to avoid a possibly
+      inaccurate author list -- verify against the listing directly).
