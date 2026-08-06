@@ -2,7 +2,7 @@
 
 This project uses the **5G-NIDD** dataset (5G Network Intrusion Detection
 Dataset), published on IEEE DataPort:
-<https://ieee-dataport.org/10203>.
+<https://ieee-dataport.org/documents/5g-nidd-comprehensive-network-intrusion-detection-dataset-generated-over-5g-wireless>.
 
 **The dataset is NOT redistributed in this repository** and is not
 covered by this repository's [MIT license](../LICENSE) — obtain it

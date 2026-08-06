@@ -192,12 +192,13 @@ methodology:
 @mastersthesis{hernandez2026_5gnidd_agentic_ids,
   author = {Hernández, Justo},
   title  = {5G-GTP Agentic IDS: An Agentic Intrusion Detection Architecture for the 5G User Plane},
-  school = {Universidad Politécnica de Cartagena (UPCT)},
+  school = {IT BUSSINESS SCHOOL (ENIIT)},
   year   = {2026},
   type   = {Master's Thesis (TFM)}
 }
 ```
 
-The underlying dataset ([5G-NIDD](https://ieee-dataport.org/10203)) is not
-redistributed here and has its own citation requirements — see
+The underlying dataset ([5G-NIDD](https://ieee-dataport.org/documents/5g-nidd-comprehensive-network-intrusion-detection-dataset-generated-over-5g-wireless)) is not redistributed here and has its own citation requirements — see
 [`data/dataset_instructions.md`](data/dataset_instructions.md).
+## REFERENCE
+Y. Siriwardhana et al., "Descriptor: 5G Wireless Network Intrusion Detection Dataset (5G-NIDD)," in IEEE Data Descriptions, doi: 10.1109/IEEEDATA.2025.3592888.https://ieeexplore.ieee.org/document/11098458/references#references

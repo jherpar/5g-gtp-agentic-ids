@@ -5,9 +5,9 @@ type: software
 authors:
   - family-names: "Hernández"
     given-names: "Justo"
-    email: justo.hernandez@edu.upct.es
-    affiliation: "Universidad Politécnica de Cartagena (UPCT)"
-repository-code: "https://github.com/<github-username>/5g-gtp-agentic-ids-tfm"
+    email: j.hernandez.parraga@gmail.com
+    affiliation: "IT BUSSINESS SCHOOL (ENIIT)"
+repository-code: "https://github.com/jherpar/5g-gtp-agentic-ids-tfm"
 abstract: >
   Master's Thesis (TFM) research codebase comparing a rule-based agentic
   detection architecture (TEID Agent -> PDU Session Agent -> Supervisor
@@ -31,16 +31,18 @@ preferred-citation:
   authors:
     - family-names: "Hernández"
       given-names: "Justo"
-      affiliation: "Universidad Politécnica de Cartagena (UPCT)"
+      affiliation: "IT BUSSINESS SCHOOL (ENIIT)"
   institution:
-    name: "Universidad Politécnica de Cartagena (UPCT)"
+    name: "IT BUSSINESS SCHOOL (ENIIT)"
   thesis-type: "Master's Thesis (TFM)"
   year: 2026
 references:
   - type: dataset
     title: "5G-NIDD: A Comprehensive Network Intrusion Detection Dataset Generated over 5G Wireless Network"
-    url: "https://ieee-dataport.org/10203"
+    url: "https://ieeexplore.ieee.org/document/11098458/references#references"
     notes: >
+      Y. Siriwardhana et al., "Descriptor: 5G Wireless Network Intrusion Detection Dataset (5G-NIDD),
+      " in IEEE Data Descriptions, doi: 10.1109/IEEEDATA.2025.3592888.
       The underlying dataset used by this project. Not redistributed in
       this repository; see data/dataset_instructions.md for how to obtain
       it under the original authors' own terms. Cite the dataset
