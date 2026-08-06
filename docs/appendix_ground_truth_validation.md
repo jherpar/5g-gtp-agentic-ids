@@ -20,7 +20,7 @@ methodology and headline findings.
 `data/raw/BS1_each_attack_csv/BS1_each_attack_csv/*.csv` is a
 previously-unused per-attack-type flow export from the dataset authors
 (Argus-derived, one row per biflow). Unlike `Combined.csv`/`Encoded.csv`
-(which have no IP/port columns at all — noted in `CLAUDE.md` from the
+(which have no IP/port columns at all — a known limitation noted from the
 start of this project), these files retain real `SrcAddr`/`DstAddr` IP
 addresses alongside a per-flow `Label`/`Attack Type`/`Attack Tool`. That
 makes them usable as an **independent ground-truth reference** for our

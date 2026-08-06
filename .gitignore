@@ -48,3 +48,6 @@ build/
 
 # OS
 Thumbs.db
+
+# Local-only: coding-agent instructions, not for the published repo
+CLAUDE.md
